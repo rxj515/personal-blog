@@ -1833,8 +1833,8 @@ def get_dept_list():
     try:
         import requests
         
-        # Java 后端地址（端口 60853）
-        java_api_url = "http://localhost:55123/deptBankType/getExcelTypeSelectPy"
+        # ✅ 走网关，端口固定 1100
+        java_api_url = "http://localhost:1100/deptBankType/getExcelTypeSelectPy"
         
         # 后端加了 @SaIgnore 后，不需要 token 了
         response = requests.get(
@@ -1860,7 +1860,11 @@ def get_dept_list():
             # 先全部转换为字典
             for item in items:
                 dept_id = item.get("id")
+                
+                # ✅ 修复：parentId 可能是 "0" 或 null，需要统一处理
                 parent_id = item.get("parentId") or ""
+                if parent_id == "0":
+                    parent_id = ""
                 
                 dept_map[dept_id] = {
                     "id": dept_id,
@@ -1871,7 +1875,8 @@ def get_dept_list():
                     "superiorName": item.get("superiorName"),
                     "subjectionId": item.get("subjectionId"),
                     "subjectionName": item.get("subjectionName"),
-                    "isMine": item.get("isMine", 0),
+                    # ✅ 修复：isMine 可能是 null，需要统一为 0
+                    "isMine": item.get("isMine") or 0,
                     "children": []
                 }
             
@@ -1910,7 +1915,6 @@ def get_dept_list():
             "message": f"获取分类失败：{str(e)}",
             "data": get_local_dept_list()
         }
-
 
 def get_local_dept_list():
     """
