@@ -872,14 +872,340 @@ def get_knowledge_statistics():
 #
 # ============================================================
 
-# ============================================================
-# 28. AI生成题目（流式模式 - SSE）
-#
-# POST /api/questions/generate-stream
-#
-# 每生成一道题就立即通过 SSE 推送给前端
-#
-# ============================================================
+# # ============================================================
+# # 28. AI生成题目（流式模式 - SSE）
+# #
+# # POST /api/questions/generate-stream
+# #
+# # 每生成一道题就立即通过 SSE 推送给前端
+# #
+# # ============================================================
+
+# @app.post("/api/questions/generate-stream")
+# async def generate_questions_stream(
+#     data: dict = Body(...)
+# ):
+#     try:
+
+#         # ----------------------------------------------------
+#         # 1. 获取AI配置
+#         # ----------------------------------------------------
+
+#         ai = get_ai_config()
+
+#         provider = (
+#             ai.get("provider")
+#             or ai.get("ai")
+#             or "ollama"
+#         )
+
+#         # ----------------------------------------------------
+#         # 2. 获取参数
+#         # ----------------------------------------------------
+
+#         question_type = data.get(
+#             "question_type",
+#             "单选题"
+#         )
+
+#         try:
+#             count = int(
+#                 data.get(
+#                     "count",
+#                     10
+#                 )
+#             )
+#         except (TypeError, ValueError):
+#             return JSONResponse(
+#                 status_code=400,
+#                 content={
+#                     "success": False,
+#                     "message": "题目数量必须是整数"
+#                 }
+#             )
+
+#         if count < 1:
+#             return JSONResponse(
+#                 status_code=400,
+#                 content={
+#                     "success": False,
+#                     "message": "题目数量必须大于0"
+#                 }
+#             )
+
+#         if count > 100:
+#             return JSONResponse(
+#                 status_code=400,
+#                 content={
+#                     "success": False,
+#                     "message": "一次最多生成100道题"
+#                 }
+#             )
+
+#         # ----------------------------------------------------
+#         # 3. 设置AI服务商
+#         # ----------------------------------------------------
+
+#         import ai_client
+
+#         ai_client.set_ai_type(provider)
+
+#         # ----------------------------------------------------
+#         # 4. 导入出题模块
+#         # ----------------------------------------------------
+
+#         import generate_questions as question_generator
+
+#         # ----------------------------------------------------
+#         # 5. 创建 SSE 流式生成器
+#         # ----------------------------------------------------
+
+#         async def event_generator():
+
+#             # 发送开始信号
+#             yield f"data: {json.dumps({'type': 'start', 'message': '开始生成题目...', 'total': count})}\n\n"
+
+#             # 用于收集所有题目
+#             all_questions = []
+#             success_count = 0
+#             failed_count = 0
+
+#             # 重新加载法规知识库（使用外层的 BASE_DIR）
+#             articles_file = BASE_DIR / "data" / "articles.json"
+
+#             if not articles_file.exists():
+#                 yield f"data: {json.dumps({'type': 'error', 'message': '找不到法规知识库'})}\n\n"
+#                 return
+
+#             try:
+#                 with open(articles_file, "r", encoding="utf-8") as f:
+#                     articles = json.load(f)
+#             except Exception as e:
+#                 yield f"data: {json.dumps({'type': 'error', 'message': f'读取法规知识库失败：{e}'})}\n\n"
+#                 return
+
+#             if not isinstance(articles, list):
+#                 yield f"data: {json.dumps({'type': 'error', 'message': '法规知识库格式错误'})}\n\n"
+#                 return
+
+#             # 获取法规名称
+#             law_names = {
+#                 item.get("law_name")
+#                 for item in articles
+#                 if isinstance(item, dict) and item.get("law_name")
+#             }
+
+#             if law_names:
+#                 law_name = list(law_names)[0]
+#             else:
+#                 law_name = "法规"
+
+#             # 获取可出题条文
+#             article_list = [
+#                 item
+#                 for item in articles
+#                 if isinstance(item, dict)
+#                 and item.get("type") == "article"
+#                 and item.get("article")
+#                 and item.get("content")
+#             ]
+
+#             if not article_list:
+#                 yield f"data: {json.dumps({'type': 'error', 'message': '没有找到可用于出题的法规条文'})}\n\n"
+#                 return
+
+#             # 生成题型计划
+#             import random
+
+#             if question_type in ("判断题", "单选题", "多选题"):
+#                 type_plan = [question_type for _ in range(count)]
+#             else:
+#                 types = ["判断题", "单选题", "多选题"]
+#                 type_plan = [types[i % 3] for i in range(count)]
+#                 random.shuffle(type_plan)
+
+#             # 读取历史题库（用于去重）
+#             history_file = question_generator.get_question_file(law_name, use_new=False)
+#             history_questions = []
+
+#             if history_file.exists():
+#                 try:
+#                     with open(history_file, "r", encoding="utf-8") as f:
+#                         history_questions = json.load(f)
+#                         if not isinstance(history_questions, list):
+#                             history_questions = []
+#                 except Exception:
+#                     history_questions = []
+
+#             used_questions = {
+#                 (
+#                     item.get("article"),
+#                     item.get("title_category_name")
+#                 )
+#                 for item in history_questions
+#                 if isinstance(item, dict)
+#                 and item.get("article")
+#                 and item.get("title_category_name")
+#             }
+
+#             failed_questions = set()
+#             new_questions = []
+
+#             # 获取 _new.json 文件路径
+#             new_questions_file = question_generator.get_question_file(law_name, use_new=True)
+
+#             # 循环生成每一道题
+#             while success_count < count:
+
+#                 current_type = type_plan[success_count]
+
+#                 # 找可用法规
+#                 available = [
+#                     item
+#                     for item in article_list
+#                     if (
+#                         (item.get("article"), current_type)
+#                         not in used_questions
+#                     )
+#                     and (
+#                         (item.get("article"), current_type)
+#                         not in failed_questions
+#                     )
+#                 ]
+
+#                 if not available:
+#                     yield f"data: {json.dumps({'type': 'warning', 'message': f'当前题型 {current_type} 没有更多可用法规条文'})}\n\n"
+#                     break
+
+#                 item = random.choice(available)
+#                 article = item.get("article", "")
+#                 content = item.get("content", "")
+
+#                 # 生成题目
+#                 question = question_generator.generate_one_question(
+#                     article,
+#                     content,
+#                     current_type
+#                 )
+
+#                 if question is None:
+#                     failed_questions.add((article, current_type))
+#                     failed_count += 1
+#                     yield f"data: {json.dumps({'type': 'progress', 'message': f'第 {success_count + 1} 题生成失败，正在重试...', 'success': success_count, 'failed': failed_count, 'total': count})}\n\n"
+#                     continue
+
+#                 # 验证题型
+#                 if question.get("title_category_name") != current_type:
+#                     failed_questions.add((article, current_type))
+#                     failed_count += 1
+#                     continue
+
+#                 # 保存题目
+#                 new_questions.append(question)
+#                 used_questions.add((article, current_type))
+#                 success_count += 1
+
+#                 # 每次生成后保存 _new.json
+#                 try:
+#                     with open(new_questions_file, "w", encoding="utf-8") as f:
+#                         json.dump(new_questions, f, ensure_ascii=False, indent=2)
+#                 except Exception as e:
+#                     yield f"data: {json.dumps({'type': 'error', 'message': f'保存新题失败：{e}'})}\n\n"
+#                     return
+
+#                 # 推送这道题给前端
+#                 yield f"data: {json.dumps({'type': 'question', 'question': question, 'index': success_count, 'total': count, 'success': success_count, 'failed': failed_count})}\n\n"
+
+#                 # 小延迟，让前端有时间渲染
+#                 await asyncio.sleep(0.1)
+
+#             # 所有题目生成完成后，统一追加到历史题库
+#             if new_questions:
+#                 try:
+#                     current_history = []
+#                     if history_file.exists():
+#                         try:
+#                             with open(history_file, "r", encoding="utf-8") as f:
+#                                 current_history = json.load(f)
+#                                 if not isinstance(current_history, list):
+#                                     current_history = []
+#                         except Exception:
+#                             current_history = []
+
+#                     current_history.extend(new_questions)
+
+#                     with open(history_file, "w", encoding="utf-8") as f:
+#                         json.dump(current_history, f, ensure_ascii=False, indent=2)
+
+#                 except Exception as e:
+#                     yield f"data: {json.dumps({'type': 'error', 'message': f'追加历史题库失败：{e}'})}\n\n"
+
+#             # 发送完成信号
+#             yield f"data: {json.dumps({'type': 'end', 'message': f'生成完成，共生成 {success_count} 道题', 'total': success_count, 'questions': new_questions})}\n\n"
+
+#         # ====================================================
+#         # 返回 SSE 流式响应
+#         # ====================================================
+
+#         return StreamingResponse(
+#             event_generator(),
+#             media_type="text/event-stream",
+#             headers={
+#                 "Cache-Control": "no-cache",
+#                 "Connection": "keep-alive",
+#                 "X-Accel-Buffering": "no"
+#             }
+#         )
+
+#     except Exception as e:
+
+#         print()
+#         print("=" * 60)
+#         print("AI流式出题失败")
+#         print("=" * 60)
+#         print("异常类型：", type(e).__name__)
+#         print("异常信息：", e)
+#         print("=" * 60)
+#         print()
+
+#         return JSONResponse(
+#             status_code=500,
+#             content={
+#                 "success": False,
+#                 "message": f"AI流式出题失败：{e}"
+#             }
+#         )
+        
+
+def get_category_by_superior_name(superior_name):
+    """
+    根据上级名称，自动归类到大类
+    """
+    SUPERIOR_TO_CATEGORY = {
+        "综采": "采煤类",
+        "综采一队": "采煤类",
+        "掘进开拓": "掘进类",
+        "掘进二队": "掘进类",
+        "运输": "运输类",
+        "机运队": "运输类",
+        "机电": "机电类",
+        "机电运输": "机电类",
+        "地面机电队": "机电类",
+        "通风队": "通风类",
+        "通风": "通风类",
+        "安全": "安全类",
+        "安监部门": "安全类",
+        "抽采": "抽采类",
+        "探水": "探水类",
+        "监控信息": "监控类",
+        "鑫隆煤业": "全部工种",
+        "荣大煤业": "全部工种",
+        "惠安煤业": "全部工种",
+        "煤业公司": "全部工种",
+        None: "全部工种"
+    }
+    return SUPERIOR_TO_CATEGORY.get(superior_name, "全部工种")
+
 
 @app.post("/api/questions/generate-stream")
 async def generate_questions_stream(
@@ -943,7 +1269,16 @@ async def generate_questions_stream(
             )
 
         # ----------------------------------------------------
-        # 3. 设置AI服务商
+        # 3. ✅ 新增：接收分类（工种）信息
+        # ----------------------------------------------------
+
+        dept = data.get("dept", {})
+        dept_id = dept.get("id", "")
+        dept_name = dept.get("fullName", "")
+        superior_name = dept.get("superiorName", "")
+
+        # ----------------------------------------------------
+        # 4. 设置AI服务商
         # ----------------------------------------------------
 
         import ai_client
@@ -951,13 +1286,13 @@ async def generate_questions_stream(
         ai_client.set_ai_type(provider)
 
         # ----------------------------------------------------
-        # 4. 导入出题模块
+        # 5. 导入出题模块
         # ----------------------------------------------------
 
         import generate_questions as question_generator
 
         # ----------------------------------------------------
-        # 5. 创建 SSE 流式生成器
+        # 6. 创建 SSE 流式生成器
         # ----------------------------------------------------
 
         async def event_generator():
@@ -1013,6 +1348,25 @@ async def generate_questions_stream(
             if not article_list:
                 yield f"data: {json.dumps({'type': 'error', 'message': '没有找到可用于出题的法规条文'})}\n\n"
                 return
+
+            # ----------------------------------------------------
+            # ✅ 新增：根据上级名称（大类）过滤法条
+            # ----------------------------------------------------
+
+            if superior_name:
+                # 用上级名称判断大类
+                dept_category = get_category_by_superior_name(superior_name)
+
+                # 根据大类过滤法条
+                article_list = [
+                    item for item in article_list
+                    if item.get("dept_type_name") == dept_category
+                    or item.get("dept_type_name") == "全部工种"
+                ]
+
+                # 如果没有匹配到法条，使用全部法条
+                if not article_list:
+                    print(f"⚠️ 大类 [{dept_category}] 没有匹配到法条，使用全部法条")
 
             # 生成题型计划
             import random
@@ -1175,6 +1529,8 @@ async def generate_questions_stream(
                 "message": f"AI流式出题失败：{e}"
             }
         )
+
+
         
 # ============================================================
 # 29. 读取最新题库（只读历史题库，排除 _new.json）
@@ -2228,3 +2584,25 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8000
     )
+
+import threading
+import time
+
+@app.on_event("startup")
+async def startup_event():
+    """
+    启动时自动给法条打标签（后台线程，不阻塞服务）
+    """
+    def tag_articles_background():
+        try:
+            # 打标签逻辑...
+            import tag_articles
+            tag_articles.main()
+            print("✅ 已自动给法条打上工种标签")
+        except Exception as e:
+            print(f"❌ 自动打标签失败：{e}")
+    
+    # 放到后台线程，不阻塞服务启动
+    threading.Thread(target=tag_articles_background, daemon=True).start()
+    
+    print("✅ 打标签任务已在后台启动，服务正常运行中")

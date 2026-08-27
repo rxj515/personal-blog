@@ -33,6 +33,9 @@ const AIQuestion = {
         // 读取当前系统AI配置
         await this.loadAIConfig();
 
+        // ✅ 新增：加载分类（工种）下拉框
+        await this.loadAiDeptList();
+
         // 加载上次生成的题目（从 _new.json）
         await this.loadNewQuestions();
 
@@ -57,7 +60,64 @@ const AIQuestion = {
 
 
     // =====================================================
-    // ✅ 处理配置变化事件
+    // ✅ 新增：加载分类（工种）下拉框
+    // =====================================================
+    async loadAiDeptList() {
+
+        try {
+    
+            const response = await fetch("/api/dept/list?t=" + Date.now(), {
+                method: "GET",
+                cache: "no-store"
+            });
+    
+            const result = await response.json();
+    
+            const select = document.getElementById("ai-dept-select");
+    
+            if (!select) return;
+    
+            // 清空
+            select.innerHTML = '<option value="">全部工种</option>';
+    
+            if (result.success && result.data.length > 0) {
+    
+                // 扁平化树形结构（带缩进）
+                const flattenTree = (nodes, prefix = '', parentName = '') => {
+                    nodes.forEach(node => {
+                        const option = document.createElement('option');
+                        option.value = node.id;
+                        option.textContent = prefix + node.name;
+    
+                        // 存储完整路径
+                        const fullPath = parentName ? `${parentName} / ${node.name}` : node.name;
+                        option.dataset.fullName = fullPath;
+                        option.dataset.superiorName = node.superiorName || '';   // ★★★ 新增 ★★★
+                        option.dataset.subjectionId = node.subjectionId || '';
+                        option.dataset.subjectionName = node.subjectionName || '';
+    
+                        select.appendChild(option);
+    
+                        if (node.children && node.children.length > 0) {
+                            flattenTree(node.children, prefix + '　　', fullPath);
+                        }
+                    });
+                };
+    
+                flattenTree(result.data);
+    
+            }
+    
+        }
+        catch (e) {
+            console.error("加载分类失败:", e);
+        }
+    },
+
+
+    
+    // =====================================================
+    // 处理配置变化事件
     // =====================================================
     _handleConfigChange() {
 
@@ -630,6 +690,21 @@ const AIQuestion = {
 
 
         // =================================================
+        // ✅ 获取分类（工种）信息
+        // =================================================
+        const deptSelect = document.getElementById("ai-dept-select");
+
+        const selectedOption = deptSelect ? deptSelect.options[deptSelect.selectedIndex] : null;
+
+        const deptInfo = {
+            id: selectedOption ? selectedOption.value : "",
+            fullName: selectedOption ? (selectedOption.dataset.fullName || "") : "",
+            superiorName: selectedOption ? (selectedOption.dataset.superiorName || "") : "",   // ★★★ 新增 ★★★
+            subjectionId: selectedOption ? (selectedOption.dataset.subjectionId || "") : "",
+            subjectionName: selectedOption ? (selectedOption.dataset.subjectionName || "") : ""
+        };
+
+        // =================================================
         // 数量校验
         // =================================================
         if (
@@ -734,6 +809,11 @@ const AIQuestion = {
             );
 
             console.log(
+                "分类：",
+                deptInfo
+            );
+
+            console.log(
                 "================================"
             );
 
@@ -751,7 +831,8 @@ const AIQuestion = {
                         },
                         body: JSON.stringify({
                             question_type: questionType,
-                            count: count
+                            count: count,
+                            dept: deptInfo  // ✅ 新增：把分类信息传过去
                         })
                     }
                 );
