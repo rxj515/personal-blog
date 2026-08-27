@@ -1,0 +1,740 @@
+/* =========================================================
+   题库管理
+   与 dashboard / knowledge 风格统一
+========================================================= */
+
+
+.question-bank-page {
+    width:100%;
+}
+
+
+/* =========================================================
+   页面标题
+========================================================= */
+
+.page-header {
+
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+
+    margin-bottom:18px;
+
+}
+
+
+.page-header h1 {
+
+    margin:0;
+
+    font-size:22px;
+
+    font-weight:700;
+
+    color:#1e293b;
+
+}
+
+
+.page-header p {
+
+    margin-top:6px;
+
+    color:#64748b;
+
+    font-size:13px;
+
+}
+
+
+
+
+/* =========================================================
+   筛选卡片
+========================================================= */
+
+
+.question-filter-card {
+
+
+    background:#ffffff;
+
+    border:1px solid #e5e7eb;
+
+    border-radius:12px;
+
+    padding:16px 18px;
+
+    margin-bottom:16px;
+
+
+    display:flex;
+
+    align-items:flex-end;
+
+    gap:20px;
+
+
+}
+
+
+
+/* 单个筛选 */
+
+.question-filter-item {
+
+
+    display:flex;
+
+    flex-direction:column;
+
+    gap:6px;
+
+
+}
+
+
+
+.question-filter-item label {
+
+
+    font-size:12px;
+
+    color:#64748b;
+
+    font-weight:600;
+
+
+}
+
+
+
+.search-item {
+
+
+    flex:1;
+
+
+}
+
+
+.search-item .form-input {
+
+
+    width:100%;
+
+    height:36px;
+
+
+}
+
+
+
+.type-item {
+
+
+    width:160px;
+
+
+}
+
+
+.type-item .form-select {
+
+
+    width:100%;
+
+    height:36px;
+
+
+}
+
+
+
+
+/* 数量 */
+
+.question-filter-total {
+
+
+    margin-left:auto;
+
+    display:flex;
+
+    align-items:center;
+
+    gap:8px;
+
+    padding-bottom:4px;
+
+
+}
+
+
+
+.count-label {
+
+
+    font-size:12px;
+
+    color:#64748b;
+
+
+}
+
+
+
+.count-badge {
+
+
+    height:28px;
+
+    padding:0 12px;
+
+
+    display:flex;
+
+    align-items:center;
+
+
+    border-radius:8px;
+
+
+    background:#eff6ff;
+
+
+    color:#2563eb;
+
+
+    font-size:12px;
+
+    font-weight:700;
+
+
+}
+
+
+
+
+/* =========================================================
+   表格区域
+========================================================= */
+
+
+.question-table-card {
+
+
+    background:#ffffff;
+
+
+    border:1px solid #e5e7eb;
+
+
+    border-radius:12px;
+
+
+    overflow:hidden;
+
+
+}
+
+
+
+
+.question-table-wrapper {
+
+
+    width:100%;
+
+    overflow-x:auto;
+
+
+}
+
+
+
+.question-bank-table {
+
+
+    width:100%;
+
+
+    min-width:1500px;
+
+
+    border-collapse:collapse;
+
+
+    table-layout:fixed;
+
+
+}
+
+
+
+
+/* =========================================================
+   表头
+========================================================= */
+
+
+.question-bank-table thead {
+
+
+    background:#f8fafc;
+
+
+}
+
+
+
+.question-bank-table th {
+
+
+    height:42px;
+
+
+    padding:0 10px;
+
+
+    border-bottom:
+
+    1px solid #e2e8f0;
+
+
+    font-size:12px;
+
+
+    color:#64748b;
+
+
+    font-weight:700;
+
+
+    white-space:nowrap;
+
+
+}
+
+
+
+
+
+/* =========================================================
+   内容
+========================================================= */
+
+
+.question-bank-table td {
+
+
+    padding:12px 10px;
+
+
+    border-bottom:
+
+    1px solid #f1f5f9;
+
+
+    font-size:12px;
+
+
+    color:#475569;
+
+
+    vertical-align:top;
+
+
+    line-height:1.7;
+
+
+}
+
+
+
+.question-bank-table tbody tr:hover {
+
+
+    background:#f8fafc;
+
+
+}
+
+
+
+/* =========================================================
+   列宽
+========================================================= */
+
+
+.col-index {
+
+    width:45px;
+
+    text-align:center;
+
+}
+
+
+
+.col-type {
+
+
+    width:80px;
+
+
+}
+
+
+
+.col-title {
+
+
+    width:330px;
+
+
+}
+
+
+
+.col-option {
+
+
+    width:120px;
+
+
+}
+
+
+
+.col-answer {
+
+
+    width:70px;
+
+
+}
+
+
+
+.col-analysis {
+
+
+    width:300px;
+
+
+}
+
+
+
+
+/* =========================================================
+   单元格
+========================================================= */
+
+
+.question-index-cell {
+
+
+    text-align:center;
+
+    color:#94a3b8!important;
+
+}
+
+
+
+.question-type-badge {
+
+
+    display:inline-flex;
+
+
+    height:24px;
+
+
+    padding:0 8px;
+
+
+    align-items:center;
+
+
+    justify-content:center;
+
+
+    border-radius:6px;
+
+
+    background:#eff6ff;
+
+
+    color:#2563eb;
+
+
+    font-size:11px;
+
+
+    font-weight:700;
+
+
+}
+
+
+
+
+.question-title-cell {
+
+
+    color:#334155!important;
+
+
+    font-weight:600;
+
+
+    word-break:break-all;
+
+
+}
+
+
+
+.option-cell {
+
+
+    color:#64748b!important;
+
+
+    word-break:break-word;
+
+
+}
+
+
+
+
+.answer-cell {
+
+
+    color:#16a34a!important;
+
+
+    font-weight:700;
+
+
+    text-align:center;
+
+
+}
+
+
+
+.analysis-cell {
+
+
+    color:#64748b!important;
+
+
+    word-break:break-word;
+
+
+}
+
+
+
+
+/* =========================================================
+   空数据
+========================================================= */
+
+
+.empty-cell {
+
+
+    height:180px;
+
+
+    text-align:center!important;
+
+
+    vertical-align:middle!important;
+
+
+    color:#94a3b8!important;
+
+
+}
+
+
+
+
+
+/* =========================================================
+   分页
+========================================================= */
+
+
+.question-pagination {
+
+
+    height:55px;
+
+
+    display:flex;
+
+
+    align-items:center;
+
+
+    justify-content:center;
+
+
+    gap:14px;
+
+
+}
+
+
+
+.page-btn {
+
+
+    height:32px;
+
+
+    padding:0 16px;
+
+
+    border:1px solid #e2e8f0;
+
+
+    border-radius:6px;
+
+
+    background:#ffffff;
+
+
+    color:#475569;
+
+
+    cursor:pointer;
+
+
+    font-size:12px;
+
+
+}
+
+
+
+.page-btn:hover:not(:disabled){
+
+
+    color:#2563eb;
+
+
+    border-color:#2563eb;
+
+
+    background:#eff6ff;
+
+
+}
+
+
+
+.page-btn:disabled {
+
+
+    color:#cbd5e1;
+
+
+    cursor:not-allowed;
+
+
+}
+
+
+
+/* =========================================================
+   滚动条
+========================================================= */
+
+
+.question-table-wrapper::-webkit-scrollbar {
+
+
+    height:8px;
+
+
+}
+
+
+
+.question-table-wrapper::-webkit-scrollbar-thumb {
+
+
+    background:#cbd5e1;
+
+
+    border-radius:10px;
+
+
+}
+
+
+
+
+/* =========================================================
+   小屏
+========================================================= */
+
+
+@media(max-width:1200px){
+
+
+    .question-filter-card{
+
+
+        flex-wrap:wrap;
+
+
+    }
+
+
+    .question-filter-total{
+
+
+        margin-left:0;
+
+
+    }
+
+
+}
+
+/* .btn-success {
+    height: 38px;
+    padding: 0 20px;
+    border: none;
+    border-radius: 8px;
+    background: #16a34a;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.btn-success:hover:not(:disabled) {
+    background: #15803d;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(22, 163, 74, 0.3);
+}
+
+.btn-success:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+} */

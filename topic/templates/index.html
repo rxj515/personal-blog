@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+      content="width=device-width,initial-scale=1.0">
+
+
+<title>
+通用法规 AI 系统
+</title>
+
+
+<link rel="stylesheet"
+      href="/static/css/style.css">
+
+
+</head>
+
+
+
+<body>
+
+
+<div id="app">
+
+
+
+<!-- ===============================
+     左侧导航
+================================ -->
+
+
+<aside class="sidebar">
+
+
+
+    <!-- Logo -->
+
+    <div class="sidebar-brand">
+
+
+        <div class="brand-icon">
+
+            AI
+
+        </div>
+
+
+
+        <div class="brand-content">
+
+
+            <div class="brand-title">
+
+                通用法规
+
+            </div>
+
+
+            <div class="brand-subtitle">
+
+                AI智能系统
+
+            </div>
+
+
+        </div>
+
+
+
+    </div>
+
+
+
+
+
+
+    <!-- AI状态 -->
+
+
+    <div class="ai-card">
+
+
+        <div class="ai-title">
+
+
+            <span class="online"></span>
+
+            AI服务运行中
+
+
+        </div>
+
+        <div 
+        class="ai-model"
+        id="sidebar-ai-service"
+    >
+        --
+    </div>
+    
+    
+    <div 
+        class="ai-desc"
+        id="sidebar-ai-model"
+    >
+        --
+    </div>
+
+
+    </div>
+
+
+
+
+
+
+
+    <!-- 菜单标题 -->
+
+
+    <div class="sidebar-title">
+
+        系统功能
+
+    </div>
+
+
+
+
+
+    <!-- 菜单 -->
+
+
+    <nav class="menu">
+
+
+
+        <div class="menu-item active"
+             data-page="dashboard">
+
+
+            <span class="menu-icon">
+
+                🏠
+
+            </span>
+
+
+            <span>
+
+                工作台
+
+            </span>
+
+
+        </div>
+
+
+
+
+
+
+        <div class="menu-item"
+             data-page="knowledge">
+
+
+            <span class="menu-icon">
+
+                📚
+
+            </span>
+
+
+            <span>
+
+                法规知识库
+
+            </span>
+
+
+        </div>
+
+
+
+
+
+
+        <div class="menu-item"
+             data-page="aiQuestion">
+
+
+            <span class="menu-icon">
+
+                ✨
+
+            </span>
+
+
+            <span>
+
+                AI智能出题
+
+            </span>
+
+
+        </div>
+
+
+
+
+
+
+        <div class="menu-item"
+             data-page="questionBank">
+
+
+            <span class="menu-icon">
+
+                📝
+
+            </span>
+
+
+            <span>
+
+                题库管理
+
+            </span>
+
+
+        </div>
+
+
+
+
+
+
+        <div class="menu-item"
+             data-page="system">
+
+
+            <span class="menu-icon">
+
+                ⚙
+
+            </span>
+
+
+            <span>
+
+                系统设置
+
+            </span>
+
+
+        </div>
+
+
+
+    </nav>
+
+
+
+
+
+
+
+    <!-- 底部 -->
+
+
+    <div class="sidebar-footer">
+
+
+        <!-- <div class="footer-row">
+
+
+            <span>
+
+                知识库
+
+            </span>
+
+
+            <b>
+
+                745条
+
+            </b>
+
+
+        </div> -->
+
+
+
+        <div class="footer-row">
+
+
+            <span>
+
+                系统版本
+
+            </span>
+
+
+            <b>
+
+                v1.0.0
+
+            </b>
+
+
+        </div>
+
+
+
+    </div>
+
+
+
+
+</aside>
+
+
+
+
+
+
+
+
+
+<!-- ===============================
+     主区域
+================================ -->
+
+
+<main class="main">
+
+
+
+<header class="header">
+
+
+
+<div class="header-left">
+
+
+<div id="page-title"
+     class="header-title">
+
+工作台
+
+</div>
+
+
+</div>
+
+
+
+
+
+<div class="header-right">
+
+
+<div id="current-time"
+     class="current-time">
+
+--
+
+</div>
+
+
+
+
+<div class="header-ai-status">
+
+
+<span class="status-dot"></span>
+
+
+<span id="header-ai-name">
+
+Ollama
+
+</span>
+
+
+</div>
+
+
+</div>
+
+
+
+
+</header>
+
+
+
+
+
+
+
+
+<section id="page-container"
+         class="page-container">
+
+
+
+<div class="page-loading">
+
+
+<div class="loading-spinner">
+
+</div>
+
+
+
+<div class="loading-text">
+
+页面加载中...
+
+</div>
+
+
+
+</div>
+
+
+
+</section>
+
+
+
+
+
+</main>
+
+
+
+
+
+
+</div>
+
+
+
+<script src="/static/js/app.js"></script>
+
+
+
+</body>
+
+
+</html>

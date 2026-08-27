@@ -1,0 +1,509 @@
+<div class="system-page">
+
+
+    <!-- 页面标题 -->
+    
+    <div class="page-header">
+    
+        <div>
+    
+            <h1>
+                系统设置
+            </h1>
+    
+            <p>
+                查看系统运行环境及 AI 服务配置
+            </p>
+    
+        </div>
+    
+    </div>
+    
+    
+    
+    <!-- AI状态 -->
+    
+    <div class="system-status-card">
+    
+    
+        <div class="system-status-left">
+    
+    
+            <div class="system-status-icon">
+    
+                ✓
+    
+            </div>
+    
+    
+            <div>
+    
+    
+                <div class="system-status-title">
+    
+                    AI 服务运行状态
+    
+                </div>
+    
+    
+    
+                <div
+                    id="system-status-description"
+                    class="system-status-description"
+                >
+    
+                    正在读取系统配置...
+    
+                </div>
+    
+    
+            </div>
+    
+    
+        </div>
+    
+    
+    
+        <span
+            id="system-status"
+            class="status-badge"
+        >
+    
+            检测中
+    
+        </span>
+    
+    
+    </div>
+    
+    
+    
+    
+    
+    <!-- 配置区域 -->
+    
+    
+    <div class="system-grid">
+    
+    
+    
+    <!-- 系统信息 -->
+    
+    
+    <div class="system-card">
+    
+    
+    <div class="system-card-title">
+    
+    系统信息
+    
+    </div>
+    
+    
+    
+    
+    <div class="system-info-row">
+    
+    <span>
+    Python版本
+    </span>
+    
+    
+    <strong id="system-python">
+    
+    --
+    
+    </strong>
+    
+    
+    </div>
+    
+    
+    
+    
+    
+    <div class="system-info-row">
+    
+    <span>
+    AI服务
+    </span>
+    
+    
+    <strong id="system-ai">
+    
+    --
+    
+    </strong>
+    
+    
+    </div>
+    
+    
+    
+    
+    
+    <div class="system-info-row">
+    
+    <span>
+    AI模型
+    </span>
+    
+    
+    <strong id="system-model">
+    
+    --
+    
+    </strong>
+    
+    
+    </div>
+    
+    
+    
+    
+    
+    <div class="system-info-row">
+    
+    <span>
+    接口地址
+    </span>
+    
+    
+    <strong id="system-ollama">
+    
+    --
+    
+    </strong>
+    
+    
+    </div>
+    
+    
+    
+    
+    </div>
+    
+    
+    
+    
+    
+    <!-- AI配置 -->
+    
+    
+    <div class="system-card">
+    
+    
+    <div class="system-card-title">
+    
+    AI 服务配置
+    
+    </div>
+    
+    
+    
+    <div class="form-group">
+    
+    
+    <label>
+    
+    AI服务类型
+    
+        <span class="field-hint">(切换自动填充)</span>
+    </label>
+    
+    
+    
+    <select
+        id="ai-service"
+        class="form-select"
+        onchange="System.changeAIProvider()"
+    >
+    
+    
+        <option value="ollama">
+    
+            Ollama (本地)
+    
+        </option>
+    
+    
+        <option value="deepseek">
+    
+            DeepSeek
+    
+        </option>
+    
+    
+        <option value="openai">
+    
+            OpenAI
+    
+        </option>
+    
+    
+        <option value="qwen">
+    
+            通义千问 (Qwen)
+    
+        </option>
+    
+    
+        <option value="zhipu">
+    
+            智谱AI (GLM)
+    
+        </option>
+    
+    
+        <option value="custom">
+    
+            自定义
+    
+        </option>
+    
+    
+    </select>
+    
+    
+    </div>
+    
+    
+    
+    
+    
+    <div class="form-group">
+    
+    
+    <label>
+    
+    模型名称
+    
+        <span class="field-hint" id="model-hint">(例如: qwen3:8b)</span>
+    </label>
+    
+    
+    <input
+    
+        id="ai-model"
+    
+        class="form-input"
+    
+        placeholder="请输入模型名称"
+    
+    >
+    
+    
+    </div>
+    
+    
+    
+    
+    
+    <div class="form-group">
+    
+    
+    <label>
+    
+    接口地址
+    
+        <span class="field-hint" id="url-hint">(例如: http://localhost:11434/v1)</span>
+    </label>
+    
+    
+    
+    <input
+    
+        id="ai-url"
+    
+        class="form-input"
+    
+        placeholder="请输入接口地址"
+    
+    >
+    
+    
+    </div>
+    
+    
+    
+    <!-- 额外配置区域（API Key等） -->
+    <div id="extra-config-area" style="display:none;">
+    
+        <div class="form-group">
+    
+            <label>
+                API Key
+                <span class="field-hint">(如有需要)</span>
+            </label>
+    
+            <input
+                id="ai-api-key"
+                class="form-input"
+                type="password"
+                placeholder="请输入 API Key"
+            >
+    
+        </div>
+    </div>
+    
+    
+    
+    <button
+    
+        id="save-config-btn"
+        class="btn-primary"
+    
+        onclick="System.saveAIConfig()"
+    
+    >
+    
+    保存 AI 配置
+    
+    </button>
+    
+    
+    
+    
+    
+    
+    <hr>
+    
+    
+    
+    
+    
+    <div class="system-info-row">
+    
+    <span>
+    
+    当前服务
+    
+    </span>
+    
+    
+    <strong id="system-ai-service">
+    
+    --
+    
+    </strong>
+    
+    
+    </div>
+    
+    
+    
+    
+    
+    <div class="system-info-row">
+    
+    <span>
+    
+    当前模型
+    
+    </span>
+    
+    
+    <strong id="system-ai-model">
+    
+    --
+    
+    </strong>
+    
+    
+    </div>
+    
+    
+    
+    
+    
+    <div class="system-info-row">
+    
+    <span>
+    
+    服务状态
+    
+    </span>
+    
+    
+    <strong
+    id="system-ai-status"
+    class="system-value-success"
+    >
+    
+    检测中
+    
+    </strong>
+    
+    
+    </div>
+    
+    
+    
+    
+    
+    <div class="system-info-row">
+    
+    <span>
+    
+    接口类型
+    
+    </span>
+    
+    
+    <strong>
+    
+    OpenAI Compatible
+    
+    </strong>
+    
+    
+    </div>
+    
+    
+    
+    
+    </div>
+    
+    
+    
+    
+    </div>
+    
+    
+    
+    
+    
+    
+    <!-- 项目路径 -->
+    
+    
+    <div class="system-card project-path-card">
+    
+    
+    <div class="system-card-title">
+    
+    项目路径
+    
+    </div>
+    
+    
+    
+    <div
+    
+    id="system-project"
+    
+    class="path-box"
+    
+    >
+    
+    正在读取...
+    
+    </div>
+    
+    
+    
+    </div>
+    
+    
+    
+    </div>

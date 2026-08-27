@@ -1,0 +1,774 @@
+/* =====================================================
+   法规知识库
+   AI知识中心风格
+===================================================== */
+
+
+.knowledge-page {
+
+    width:100%;
+
+}
+
+
+
+
+/* ===============================
+   页面标题
+================================ */
+
+
+.page-header {
+
+
+    display:flex;
+
+
+    justify-content:space-between;
+
+
+    align-items:center;
+
+
+    margin-bottom:28px;
+
+
+}
+
+
+
+.page-header h1 {
+
+
+    margin:0;
+
+
+    font-size:28px;
+
+
+    font-weight:800;
+
+
+    color:#0f172a;
+
+
+}
+
+
+
+.page-header p {
+
+
+    margin-top:10px;
+
+
+    color:#64748b;
+
+
+    font-size:14px;
+
+
+}
+
+
+
+
+
+/* ===============================
+   更新按钮
+================================ */
+
+
+.btn-primary {
+
+
+    height:44px;
+
+
+    padding:0 26px;
+
+
+    border:none;
+
+
+    border-radius:14px;
+
+
+    background:#2563eb;
+
+
+    color:white;
+
+
+    font-size:14px;
+
+
+    font-weight:600;
+
+
+    cursor:pointer;
+
+
+    box-shadow:
+
+    0 8px 20px rgba(37,99,235,.25);
+
+
+    transition:.25s;
+
+
+}
+
+
+
+.btn-primary:hover {
+
+
+    transform:translateY(-2px);
+
+
+}
+
+
+
+
+
+
+
+/* ===============================
+   搜索区域
+================================ */
+
+
+.knowledge-tools {
+
+
+    display:flex;
+
+
+    gap:18px;
+
+
+    margin-bottom:24px;
+
+
+}
+
+
+
+
+
+.search-box {
+
+
+    flex:1;
+
+
+    height:58px;
+
+
+    display:flex;
+
+
+    align-items:center;
+
+
+    gap:12px;
+
+
+    padding:0 22px;
+
+
+    background:white;
+
+
+    border-radius:18px;
+
+
+    border:1px solid #e5e7eb;
+
+
+    box-shadow:
+
+    0 8px 25px rgba(15,23,42,.05);
+
+
+}
+
+
+
+
+
+.search-icon {
+
+
+    font-size:18px;
+
+
+}
+
+
+
+
+
+.search-box input {
+
+
+    flex:1;
+
+
+    border:none;
+
+
+    outline:none;
+
+
+    font-size:14px;
+
+
+    color:#334155;
+
+
+}
+
+
+
+.search-box input::placeholder {
+
+
+    color:#94a3b8;
+
+
+}
+
+
+
+
+
+
+.filter-box {
+
+
+    width:230px;
+
+
+    height:58px;
+
+
+    display:flex;
+
+
+    align-items:center;
+
+
+    gap:12px;
+
+
+    padding:0 18px;
+
+
+    background:white;
+
+
+    border-radius:18px;
+
+
+    border:1px solid #e5e7eb;
+
+
+    box-shadow:
+
+    0 8px 25px rgba(15,23,42,.05);
+
+
+}
+
+
+
+.filter-box select {
+
+
+    flex:1;
+
+
+    border:none;
+
+
+    outline:none;
+
+
+    background:white;
+
+
+    color:#334155;
+
+
+    font-size:14px;
+
+
+}
+
+
+
+
+
+
+/* ===============================
+   主体卡片
+================================ */
+
+
+.knowledge-card {
+
+
+    background:white;
+
+
+    border-radius:22px;
+
+
+    overflow:hidden;
+
+
+    border:1px solid #e5e7eb;
+
+
+    box-shadow:
+
+    0 12px 35px rgba(15,23,42,.06);
+
+
+}
+
+
+
+
+
+.card-title {
+
+
+    height:70px;
+
+
+    padding:0 28px;
+
+
+    display:flex;
+
+
+    align-items:center;
+
+
+    gap:15px;
+
+
+    font-size:18px;
+
+
+    font-weight:800;
+
+
+    color:#111827;
+
+
+    border-bottom:1px solid #f1f5f9;
+
+
+}
+
+
+
+
+
+
+.count-badge {
+
+
+    background:#eff6ff;
+
+
+    color:#2563eb;
+
+
+    padding:5px 12px;
+
+
+    border-radius:20px;
+
+
+    font-size:12px;
+
+
+}
+
+
+
+
+
+.knowledge-result-info {
+
+
+    padding:15px 28px;
+
+
+    font-size:13px;
+
+
+    color:#64748b;
+
+
+    background:#fafcff;
+
+
+}
+
+
+
+
+
+
+
+/* ===============================
+   法规列表
+================================ */
+
+
+
+.knowledge-list {
+
+
+    padding:10px 22px;
+
+
+    min-height:420px;
+
+
+}
+
+
+
+
+
+.article-item {
+
+
+    padding:22px;
+
+
+    margin:14px 0;
+
+
+    border-radius:18px;
+
+
+    border:1px solid #edf2f7;
+
+
+    transition:.25s;
+
+
+}
+
+
+
+
+.article-item:hover {
+
+
+    transform:translateY(-3px);
+
+
+    box-shadow:
+
+    0 12px 25px rgba(37,99,235,.12);
+
+
+    border-color:#bfdbfe;
+
+
+}
+
+
+
+
+
+
+.article-header {
+
+
+    display:flex;
+
+
+    align-items:center;
+
+
+    gap:12px;
+
+
+}
+
+
+
+
+.article-number {
+
+
+    background:#dbeafe;
+
+
+    color:#2563eb;
+
+
+    padding:6px 12px;
+
+
+    border-radius:10px;
+
+
+    font-size:12px;
+
+
+    font-weight:700;
+
+
+}
+
+
+
+
+.article-title {
+
+
+    font-size:16px;
+
+
+    font-weight:700;
+
+
+    color:#111827;
+
+
+}
+
+
+
+
+
+.article-content {
+
+
+    margin-top:15px;
+
+
+    padding:16px;
+
+
+    background:#f8fafc;
+
+
+    border-radius:14px;
+
+
+    color:#475569;
+
+
+    line-height:1.9;
+
+
+    font-size:14px;
+
+
+}
+
+
+
+
+
+
+
+.article-footer {
+
+
+    margin-top:15px;
+
+
+    display:flex;
+
+
+    gap:10px;
+
+
+}
+
+
+
+
+
+.article-footer span {
+
+
+    background:#f1f5f9;
+
+
+    padding:5px 12px;
+
+
+    border-radius:20px;
+
+
+    font-size:12px;
+
+
+    color:#64748b;
+
+
+}
+
+
+
+
+
+
+
+
+/* ===============================
+   分页
+================================ */
+
+
+.knowledge-pagination {
+
+
+    height:70px;
+
+
+    display:flex;
+
+
+    justify-content:center;
+
+
+    align-items:center;
+
+
+    gap:20px;
+
+
+    border-top:1px solid #f1f5f9;
+
+
+}
+
+
+
+
+
+.btn-secondary {
+
+
+    height:36px;
+
+
+    padding:0 18px;
+
+
+    border-radius:10px;
+
+
+    background:white;
+
+
+    border:1px solid #dbe3ef;
+
+
+    cursor:pointer;
+
+
+}
+
+
+
+.btn-secondary:hover {
+
+
+    background:#eff6ff;
+
+
+    color:#2563eb;
+
+
+}
+
+
+
+
+
+/* 空状态 */
+
+
+.empty-state {
+
+
+    height:300px;
+
+
+    display:flex;
+
+
+    align-items:center;
+
+
+    justify-content:center;
+
+
+    color:#94a3b8;
+
+
+}
+
+
+
+
+
+/* 手机 */
+
+
+@media(max-width:900px){
+
+
+    .knowledge-tools{
+
+
+        flex-direction:column;
+
+
+    }
+
+
+
+    .filter-box{
+
+
+        width:100%;
+
+
+    }
+
+
+
+    .page-header{
+
+
+        flex-direction:column;
+
+
+        align-items:flex-start;
+
+
+        gap:15px;
+
+
+    }
+
+
+}

@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>通用法规 AI 系统</title>
+
+    <link
+        rel="stylesheet"
+        href="/static/css/style.css"
+    >
+
+</head>
+
+
+<body>
+
+<div class="app">
+
+
+    <!-- =================================================
+         左侧菜单
+         ================================================= -->
+
+    <aside class="sidebar">
+
+        <div class="logo">
+
+            <div class="logo-icon">
+                📚
+            </div>
+
+            <div>
+
+                <div class="logo-title">
+                    AI 题库
+                </div>
+
+                <div class="logo-subtitle">
+                    智能题库系统
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <nav class="menu">
+
+            <div
+                class="menu-item active"
+                data-page="home"
+                onclick="switchPage('home')"
+            >
+                <span class="menu-icon">🏠</span>
+                <span>首页</span>
+            </div>
+
+
+            <div
+                class="menu-item"
+                data-page="knowledge"
+                onclick="switchPage('knowledge')"
+            >
+                <span class="menu-icon">📖</span>
+                <span>法规知识库</span>
+            </div>
+
+
+            <div
+                class="menu-item"
+                data-page="generate"
+                onclick="switchPage('generate')"
+            >
+                <span class="menu-icon">✨</span>
+                <span>AI 智能出题</span>
+            </div>
+
+
+            <div
+                class="menu-item"
+                data-page="questions"
+                onclick="switchPage('questions')"
+            >
+                <span class="menu-icon">📚</span>
+                <span>我的题库</span>
+            </div>
+
+
+            <div
+                class="menu-item"
+                data-page="settings"
+                onclick="switchPage('settings')"
+            >
+                <span class="menu-icon">⚙️</span>
+                <span>系统设置</span>
+            </div>
+
+        </nav>
+
+
+        <div class="sidebar-status">
+
+            <span class="status-dot"></span>
+
+            AI 服务运行中
+
+        </div>
+
+    </aside>
+
+
+
+    <!-- =================================================
+         右侧主区域
+         ================================================= -->
+
+    <main class="main">
+
+
+        <!-- 顶部 -->
+
+        <header class="topbar">
+
+            <div>
+
+                <div
+                    id="pageTitle"
+                    class="page-title"
+                >
+                    首页
+                </div>
+
+                <div
+                    id="pageDescription"
+                    class="page-description"
+                >
+                    通用法规 AI 智能题库系统
+                </div>
+
+            </div>
+
+
+            <div class="topbar-right">
+
+                <div class="system-status">
+
+                    <span class="status-dot"></span>
+
+                    Ollama
+
+                    <span class="divider">|</span>
+
+                    Qwen3:8B
+
+                </div>
+
+            </div>
+
+        </header>
+
+
+
+        <!-- =================================================
+             页面内容
+             ================================================= -->
+
+        <div class="content">
+
+
+            <!-- =================================================
+                 首页
+                 ================================================= -->
+
+            <section
+                id="page-home"
+                class="page active-page"
+            >
+
+                <div class="welcome">
+
+                    <div>
+
+                        <div class="welcome-title">
+                            欢迎使用法规 AI 题库系统
+                        </div>
+
+                        <div class="welcome-text">
+                            基于法规知识库，使用 AI 自动生成专业考试题目。
+                        </div>
+
+                    </div>
+
+
+                    <button
+                        class="primary-button"
+                        onclick="switchPage('generate')"
+                    >
+                        ✨ 开始 AI 出题
+                    </button>
+
+                </div>
+
+
+
+                <div class="stats-grid">
+
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon blue">
+                            📖
+                        </div>
+
+                        <div>
+
+                            <div class="stat-label">
+                                法规条文
+                            </div>
+
+                            <div
+                                id="homeKnowledgeCount"
+                                class="stat-value"
+                            >
+                                0
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon purple">
+                            📝
+                        </div>
+
+                        <div>
+
+                            <div class="stat-label">
+                                当前题目
+                            </div>
+
+                            <div
+                                id="homeQuestionCount"
+                                class="stat-value"
+                            >
+                                0
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon green">
+                            🤖
+                        </div>
+
+                        <div>
+
+                            <div class="stat-label">
+                                AI 模型
+                            </div>
+
+                            <div class="stat-value model-value">
+                                Qwen3:8B
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+
+                    <div class="stat-card">
+
+                        <div class="stat-icon orange">
+                            ⚡
+                        </div>
+
+                        <div>
+
+                            <div class="stat-label">
+                                系统状态
+                            </div>
+
+                            <div class="stat-value">
+                                正常
+                            </div>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <div class="section-card">
+
+                    <div class="section-header">
+
+                        <div>
+
+                            <div class="section-title">
+                                快捷操作
+                            </div>
+
+                            <div class="section-subtitle">
+                                常用功能
+                            </div>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="quick-grid">
+
+
+                        <button
+                            class="quick-card"
+                            onclick="switchPage('knowledge')"
+                        >
+
+                            <div class="quick-icon">
+                                📖
+                            </div>
+
+                            <div class="quick-title">
+                                法规知识库
+                            </div>
+
+                            <div class="quick-text">
+                                查看和更新法规条文
+                            </div>
+
+                        </button>
+
+
+
+                        <button
+                            class="quick-card"
+                            onclick="switchPage('generate')"
+                        >
+
+                            <div class="quick-icon">
+                                ✨
+                            </div>
+
+                            <div class="quick-title">
+                                AI 智能出题
+                            </div>
+
+                            <div class="quick-text">
+                                根据法规自动生成题目
+                            </div>
+
+                        </button>
+
+
+
+                        <button
+                            class="quick-card"
+                            onclick="switchPage('questions')"
+                        >
+
+                            <div class="quick-icon">
+                                📚
+                            </div>
+
+                            <div class="quick-title">
+                                我的题库
+                            </div>
+
+                            <div class="quick-text">
+                                查看已经生成的题目
+                            </div>
+
+                        </button>
+
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 法规知识库
+                 ================================================= -->
+
+            <section
+                id="page-knowledge"
+                class="page"
+            >
+
+                <div class="page-card">
+
+                    <div class="page-card-header">
+
+                        <div>
+
+                            <div class="section-title">
+                                法规知识库
+                            </div>
+
+                            <div class="section-subtitle">
+                                管理系统中的法规条文
+                            </div>
+
+                        </div>
+
+
+                        <button
+                            id="knowledgeBtn"
+                            class="primary-button"
+                            onclick="loadKnowledge()"
+                        >
+                            🔄 更新法规知识库
+                        </button>
+
+                    </div>
+
+
+                    <div
+                        id="knowledgeContainer"
+                        class="table-container"
+                    >
+
+                        <div class="empty-state">
+                            点击“更新法规知识库”加载数据
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 AI出题
+                 ================================================= -->
+
+            <section
+                id="page-generate"
+                class="page"
+            >
+
+
+                <div class="generate-layout">
+
+
+                    <!-- 出题设置 -->
+
+                    <div class="page-card generate-card">
+
+                        <div class="section-title">
+                            ✨ AI 智能出题
+                        </div>
+
+                        <div class="section-subtitle">
+                            根据法规知识库自动生成考试题目
+                        </div>
+
+
+
+                        <div class="form-group">
+
+                            <label>
+                                AI 模型
+                            </label>
+
+                            <select
+                                id="modelSelect"
+                                class="form-control"
+                            >
+
+                                <option value="ollama">
+                                    Ollama - Qwen3:8B
+                                </option>
+
+                                <option value="deepseek">
+                                    DeepSeek
+                                </option>
+
+                                <option value="openai">
+                                    OpenAI
+                                </option>
+
+                                <option value="custom">
+                                    自定义AI
+                                </option>
+
+                            </select>
+
+                        </div>
+
+
+
+                        <div class="form-group">
+
+                            <label>
+                                题型
+                            </label>
+
+
+                            <div class="type-options">
+
+
+                                <label class="type-option">
+
+                                    <input
+                                        type="radio"
+                                        name="questionType"
+                                        value="单选题"
+                                        checked
+                                    >
+
+                                    <span>
+                                        单选题
+                                    </span>
+
+                                </label>
+
+
+
+                                <label class="type-option">
+
+                                    <input
+                                        type="radio"
+                                        name="questionType"
+                                        value="多选题"
+                                    >
+
+                                    <span>
+                                        多选题
+                                    </span>
+
+                                </label>
+
+
+
+                                <label class="type-option">
+
+                                    <input
+                                        type="radio"
+                                        name="questionType"
+                                        value="判断题"
+                                    >
+
+                                    <span>
+                                        判断题
+                                    </span>
+
+                                </label>
+
+
+                            </div>
+
+                        </div>
+
+
+
+                        <div class="form-group">
+
+                            <label>
+                                题目数量
+                            </label>
+
+                            <input
+                                id="questionCount"
+                                class="form-control"
+                                type="number"
+                                min="1"
+                                max="100"
+                                value="10"
+                            >
+
+                            <div class="form-tip">
+                                一次最多生成100道题
+                            </div>
+
+                        </div>
+
+
+
+                        <button
+                            id="questionBtn"
+                            class="generate-button"
+                            onclick="loadQuestions()"
+                        >
+                            🚀 开始生成题目
+                        </button>
+
+                    </div>
+
+
+
+                    <!-- 使用说明 -->
+
+                    <div class="page-card help-card">
+
+                        <div class="section-title">
+                            💡 使用说明
+                        </div>
+
+
+                        <div class="help-item">
+
+                            <span class="help-number">
+                                1
+                            </span>
+
+                            <span>
+                                选择需要使用的 AI 模型
+                            </span>
+
+                        </div>
+
+
+                        <div class="help-item">
+
+                            <span class="help-number">
+                                2
+                            </span>
+
+                            <span>
+                                选择单选、多选或判断题
+                            </span>
+
+                        </div>
+
+
+                        <div class="help-item">
+
+                            <span class="help-number">
+                                3
+                            </span>
+
+                            <span>
+                                设置需要生成的题目数量
+                            </span>
+
+                        </div>
+
+
+                        <div class="help-item">
+
+                            <span class="help-number">
+                                4
+                            </span>
+
+                            <span>
+                                点击开始生成
+                            </span>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- =================================================
+                     生成状态
+                     ================================================= -->
+
+                <div
+                    id="generateStatus"
+                    class="generate-status hidden"
+                >
+                </div>
+
+
+
+                <!-- =================================================
+                     最新生成题目
+                     ================================================= -->
+
+                <div
+                    id="latestQuestionsCard"
+                    class="page-card latest-questions-card hidden"
+                >
+
+                    <div class="page-card-header">
+
+                        <div>
+
+                            <div class="section-title">
+                                📝 最新生成的题目
+                            </div>
+
+                            <div
+                                id="latestQuestionSubtitle"
+                                class="section-subtitle"
+                            >
+                                本次生成结果
+                            </div>
+
+                        </div>
+
+
+                        <button
+                            id="exportQuestionBtn"
+                            class="export-button"
+                            onclick="exportQuestions()"
+                        >
+                            📥 导出 Excel
+                        </button>
+
+                    </div>
+
+
+                    <div
+                        id="latestQuestionContainer"
+                        class="table-container"
+                    >
+
+                        <div class="empty-state">
+                            暂无生成结果
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 我的题库
+                 ================================================= -->
+
+            <section
+                id="page-questions"
+                class="page"
+            >
+
+                <div class="page-card">
+
+                    <div class="page-card-header">
+                        <div>
+                            <div class="section-title">
+                                我的题库
+                            </div>
+                            <div class="section-subtitle">
+                                查看已经生成的题目
+                            </div>
+                        </div>
+                    
+                        <div style="display: flex; gap: 10px;">
+                            <button
+                                id="exportLibraryBtn"
+                                class="export-button"
+                                onclick="exportQuestionLibrary()"
+                            >
+                                📥 导出 Excel
+                            </button>
+                        
+                            <button
+                                id="viewQuestionBtn"
+                                class="secondary-button"
+                                onclick="viewQuestions()"
+                            >
+                                🔄 刷新题库
+                            </button>
+                        </div>
+                    </div>
+
+
+                    <div class="question-info">
+
+                        当前题目：
+
+                        <strong id="questionCountDisplay">
+                            0
+                        </strong>
+
+                        道
+
+                    </div>
+
+
+                    <div
+                        id="questionContainer"
+                        class="table-container"
+                    >
+
+                        <div class="empty-state">
+                            暂无题目
+                        </div>
+
+                    </div>
+
+                </div>
+
+            </section>
+
+
+
+            <!-- =================================================
+                 系统设置
+                 ================================================= -->
+
+            <section
+                id="page-settings"
+                class="page"
+            >
+
+                <div class="page-card">
+
+                    <div class="section-title">
+                        ⚙️ 系统设置
+                    </div>
+
+                    <div class="section-subtitle">
+                        当前系统运行配置
+                    </div>
+
+
+                    <div
+                        id="configContainer"
+                        class="config-list"
+                    >
+                        正在读取系统配置……
+                    </div>
+
+                </div>
+
+            </section>
+
+
+        </div>
+
+    </main>
+
+</div>
+
+
+<script
+    src="/static/js/app.js"
+></script>
+
+
+</body>
+
+</html>

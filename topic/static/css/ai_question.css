@@ -1,0 +1,612 @@
+/* =====================================================
+   AI智能出题
+   与法规知识库统一风格
+===================================================== */
+
+.ai-question-page {
+    width: 100%;
+}
+
+
+/* =====================================================
+   页面标题
+===================================================== */
+
+.ai-question-page .page-header {
+    margin-bottom: 26px;
+}
+
+.ai-question-page h1 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.ai-question-page .page-header p {
+    margin-top: 10px;
+    color: #64748b;
+    font-size: 14px;
+}
+
+
+/* =====================================================
+   页面布局
+===================================================== */
+
+.ai-layout {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+
+/* =====================================================
+   通用卡片
+===================================================== */
+
+.config-card,
+.result-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    border-radius: 22px;
+    padding: 24px;
+
+    box-shadow:
+        0 12px 35px rgba(15, 23, 42, 0.06);
+}
+
+
+/* =====================================================
+   配置卡片
+===================================================== */
+
+.config-card {
+    display: grid;
+
+    grid-template-columns:
+        repeat(4, 1fr);
+
+    gap: 20px;
+
+    align-items: end;
+}
+
+
+/* =====================================================
+   配置卡片标题
+===================================================== */
+
+.config-card .card-title {
+    grid-column: 1 / -1;
+
+    height: 50px;
+
+    display: flex;
+    align-items: center;
+
+    font-size: 18px;
+    font-weight: 800;
+
+    color: #111827;
+
+    border-bottom: 1px solid #f1f5f9;
+}
+
+
+/* =====================================================
+   表单
+===================================================== */
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+
+/* =====================================================
+   表单标签
+===================================================== */
+
+.form-group label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;
+}
+
+
+/* =====================================================
+   输入框 / 下拉框
+===================================================== */
+
+.form-input,
+.form-select {
+    height: 44px;
+
+    box-sizing: border-box;
+
+    border-radius: 14px;
+
+    border: 1px solid #dbe3ef;
+
+    padding: 0 14px;
+
+    font-size: 14px;
+
+    color: #334155;
+
+    background: #ffffff;
+
+    outline: none;
+}
+
+
+/* =====================================================
+   输入框 / 下拉框 Focus
+===================================================== */
+
+.form-input:focus,
+.form-select:focus {
+    border-color: #2563eb;
+
+    box-shadow:
+        0 0 0 4px rgba(37, 99, 235, 0.1);
+}
+
+
+/* =====================================================
+   当前 AI 模型
+   -----------------------------------------------------
+   当前模型由系统配置自动读取
+   用户不能在这里切换
+===================================================== */
+
+.ai-model-display {
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    height: 44px;
+
+    box-sizing: border-box;
+
+    padding: 0 14px;
+
+    border: 1px solid #dbe3ef;
+
+    border-radius: 14px;
+
+    background: #f8fafc;
+
+    color: #334155;
+
+    font-size: 14px;
+
+    font-weight: 600;
+
+    line-height: 1;
+
+    outline: none;
+
+    cursor: default;
+
+    user-select: none;
+
+    white-space: nowrap;
+
+    overflow: hidden;
+
+    text-overflow: ellipsis;
+}
+
+
+/* =====================================================
+   AI模型加载中
+===================================================== */
+
+.ai-model-display.loading {
+    color: #94a3b8;
+
+    font-weight: 500;
+}
+
+
+/* =====================================================
+   AI模型读取成功
+===================================================== */
+
+.ai-model-display.success {
+    color: #334155;
+
+    background: #f8fafc;
+}
+
+
+/* =====================================================
+   AI模型读取失败
+===================================================== */
+
+.ai-model-display.error {
+    color: #dc2626;
+
+    background: #fef2f2;
+
+    border-color: #fecaca;
+}
+
+
+/* =====================================================
+   开始按钮
+===================================================== */
+
+.btn-primary {
+    height: 44px;
+
+    border: none;
+
+    border-radius: 14px;
+
+    background: #2563eb;
+
+    color: #ffffff;
+
+    font-size: 14px;
+
+    font-weight: 600;
+
+    cursor: pointer;
+
+    transition: 0.2s;
+}
+
+
+/* =====================================================
+   开始按钮 Hover
+===================================================== */
+
+.btn-primary:hover {
+    background: #1d4ed8;
+
+    transform: translateY(-1px);
+}
+
+
+/* =====================================================
+   开始按钮 Disabled
+===================================================== */
+
+.btn-primary:disabled {
+    opacity: 0.6;
+
+    cursor: not-allowed;
+
+    transform: none;
+}
+
+
+/* =====================================================
+   操作提示
+===================================================== */
+
+.operation-message {
+    grid-column: 1 / -1;
+
+    min-height: 18px;
+
+    font-size: 13px;
+
+    color: #64748b;
+}
+
+
+/* =====================================================
+   生成结果卡片
+===================================================== */
+
+.result-card {
+    overflow: hidden;
+}
+
+
+/* =====================================================
+   结果头部
+===================================================== */
+
+.result-header {
+    height: 55px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: space-between;
+
+    border-bottom: 1px solid #f1f5f9;
+
+    margin-bottom: 18px;
+}
+
+
+/* =====================================================
+   结果标题
+===================================================== */
+
+.result-header .card-title {
+    font-size: 18px;
+
+    font-weight: 800;
+}
+
+
+/* =====================================================
+   Excel导出按钮
+===================================================== */
+
+.btn-export {
+    height: 38px;
+
+    padding: 0 18px;
+
+    border-radius: 12px;
+
+    border: 1px solid #dbe3ef;
+
+    background: #ffffff;
+
+    color: #334155;
+
+    cursor: pointer;
+
+    transition: 0.2s;
+}
+
+
+/* =====================================================
+   Excel导出按钮 Hover
+===================================================== */
+
+.btn-export:hover {
+    border-color: #2563eb;
+
+    color: #2563eb;
+}
+
+
+/* =====================================================
+   Excel导出按钮 Disabled
+===================================================== */
+
+.btn-export:disabled {
+    opacity: 0.6;
+
+    cursor: not-allowed;
+}
+
+
+/* =====================================================
+   AI生成状态
+===================================================== */
+
+.generate-status {
+    padding: 12px;
+
+    background: #f8fafc;
+
+    border-radius: 12px;
+
+    margin-bottom: 15px;
+
+    color: #64748b;
+
+    font-size: 13px;
+}
+
+
+/* =====================================================
+   隐藏
+===================================================== */
+
+.hidden {
+    display: none !important;
+}
+
+
+/* =====================================================
+   表格区域
+   保持原样
+===================================================== */
+
+.question-result {
+    width: 100%;
+
+    height: 560px;
+
+    overflow: auto;
+
+    border: 1px solid #e5e7eb;
+
+    border-radius: 16px;
+}
+
+
+/* =====================================================
+   表格
+===================================================== */
+
+.question-table {
+    width: 100%;
+
+    min-width: 1150px;
+
+    table-layout: fixed;
+
+    border-collapse: collapse;
+}
+
+
+/* =====================================================
+   表格列宽
+===================================================== */
+
+.col-index {
+    width: 50px;
+}
+
+
+.col-question {
+    width: 28%;
+}
+
+
+.col-option {
+    width: 7%;
+}
+
+
+.col-answer {
+    width: 65px;
+}
+
+
+.col-analysis {
+    width: auto;
+}
+
+
+/* =====================================================
+   表头
+===================================================== */
+
+.question-table th {
+    height: 42px;
+
+    background: #f8fafc;
+
+    color: #475569;
+
+    font-size: 13px;
+
+    font-weight: 600;
+
+    border-bottom: 1px solid #e5e7eb;
+}
+
+
+/* =====================================================
+   表格内容
+===================================================== */
+
+.question-table td {
+    padding: 10px 8px;
+
+    color: #475569;
+
+    font-size: 12px;
+
+    line-height: 20px;
+
+    border-bottom: 1px solid #f1f5f9;
+
+    text-align: center;
+
+    vertical-align: middle;
+
+    word-break: break-all;
+}
+
+
+/* =====================================================
+   表格 Hover
+===================================================== */
+
+.question-table tbody tr:hover {
+    background: #f8fafc;
+}
+
+
+/* =====================================================
+   题目内容
+===================================================== */
+
+.question-table .question-title {
+    text-align: left;
+
+    color: #334155;
+
+    font-weight: 500;
+}
+
+
+/* =====================================================
+   滚动条
+===================================================== */
+
+.question-result::-webkit-scrollbar {
+    width: 7px;
+
+    height: 7px;
+}
+
+
+.question-result::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+
+    border-radius: 10px;
+}
+
+
+.question-result::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+
+/* =====================================================
+   900px 以下
+===================================================== */
+
+@media (max-width: 900px) {
+
+    .config-card {
+        grid-template-columns: 1fr 1fr;
+    }
+
+}
+
+
+/* =====================================================
+   600px 以下
+===================================================== */
+
+@media (max-width: 600px) {
+
+    .config-card {
+        grid-template-columns: 1fr;
+    }
+
+
+    .config-card .card-title {
+        grid-column: 1;
+    }
+
+
+    .operation-message {
+        grid-column: 1;
+    }
+
+
+    .ai-question-page h1 {
+        font-size: 24px;
+    }
+
+
+    .config-card,
+    .result-card {
+        padding: 18px;
+
+        border-radius: 18px;
+    }
+
+}

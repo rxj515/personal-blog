@@ -1,0 +1,260 @@
+<div class="dashboard-page">
+
+    <!-- 页面标题 -->
+    <div class="page-header">
+
+        <div>
+            <h1>工作台</h1>
+
+            <p>
+                通用法规 AI 智能系统
+            </p>
+        </div>
+
+    </div>
+
+
+    <!-- 统计卡片 -->
+    <div class="stat-grid">
+
+        <div class="stat-card">
+
+            <div class="stat-icon blue">
+                📚
+            </div>
+
+            <div class="stat-content">
+
+                <div class="stat-label">
+                    法规条文
+                </div>
+
+                <div
+                    class="stat-value"
+                    id="article-count"
+                >
+                    --
+                </div>
+
+                <div class="stat-desc">
+                    知识库条文数量
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-icon purple">
+                ✦
+            </div>
+
+            <div class="stat-content">
+
+                <div class="stat-label">
+                    AI 出题
+                </div>
+
+                <div
+                    class="stat-value"
+                    id="question-count"
+                >
+                    --
+                </div>
+
+                <div class="stat-desc">
+                    当前题库题目
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-icon green">
+                ✓
+            </div>
+
+            <div class="stat-content">
+
+                <div class="stat-label">
+                    AI 服务
+                </div>
+
+                <div
+                    class="stat-value"
+                    id="ai-service-status"
+                >
+                    --
+                </div>
+
+                <div
+                    class="stat-desc"
+                    id="header-ai-name"
+                >
+                    --
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <div class="stat-card">
+
+            <div class="stat-icon orange">
+                ⚙
+            </div>
+
+            <div class="stat-content">
+
+                <div class="stat-label">
+                    当前模型
+                </div>
+
+                <div
+                    class="stat-value model"
+                    id="current-model"
+                >
+                    --
+                </div>
+                
+                <div
+                    class="stat-desc"
+                    id="current-model-type"
+                >
+                    --
+                </div>
+
+            </div>
+
+        </div>
+
+    </div>
+
+
+    <!-- 快捷功能 + 系统说明 -->
+    <div class="dashboard-grid">
+
+
+        <div class="dashboard-card">
+
+            <div class="card-title">
+                快捷功能
+            </div>
+
+
+            <div class="quick-grid">
+
+
+                <button
+                    class="quick-item"
+                    onclick="App.loadPage('knowledge')"
+                >
+
+                    <span class="quick-icon">
+                        📚
+                    </span>
+
+                    <span>
+                        法规知识库
+                    </span>
+
+                </button>
+
+
+                <button
+                    class="quick-item"
+                    onclick="App.loadPage('aiQuestion')"
+                >
+
+                    <span class="quick-icon">
+                        ✦
+                    </span>
+
+                    <span>
+                        AI智能出题
+                    </span>
+
+                </button>
+
+
+                <button
+                    class="quick-item"
+                    onclick="App.loadPage('questionBank')"
+                >
+
+                    <span class="quick-icon">
+                        ▦
+                    </span>
+
+                    <span>
+                        题库管理
+                    </span>
+
+                </button>
+
+
+                <button
+                    class="quick-item"
+                    onclick="App.loadPage('system')"
+                >
+
+                    <span class="quick-icon">
+                        ⚙
+                    </span>
+
+                    <span>
+                        系统设置
+                    </span>
+
+                </button>
+
+            </div>
+
+        </div>
+
+
+
+        <div class="dashboard-card">
+
+            <div class="card-title">
+                系统说明
+            </div>
+
+            <div class="system-info">
+
+                <p>
+                    本系统用于法规知识管理、
+                    AI智能出题以及题库管理。
+                </p>
+
+                <p>
+                    当前AI服务：
+                    <strong id="ai-service">--</strong>
+                </p>
+
+                <p>
+                    当前模型：
+                    <strong id="ai-model-name">--</strong>
+                </p>
+
+                <p>
+                    后端：
+                    <strong>FastAPI</strong>
+                </p>
+
+            </div>
+            
+
+        </div>
+
+
+    </div>
+
+
+</div>
