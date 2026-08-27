@@ -69,6 +69,12 @@ const QuestionBank = {
 
     bindEvents() {
 
+        
+        /* =================================================
+        * ★ 新增：加载分类下拉框
+        * ================================================= */
+        this.loadDeptList();  // <--- 加上这一行！
+
         /* =================================================
          * 搜索
          * ================================================= */
@@ -1103,222 +1109,189 @@ const QuestionBank = {
      * 导入到数据库 (新增方法)
      * ===================================================== */
 
-    // async importQuestions() {
+    async importQuestions() {
+
+        /* =================================================
+         * 1. 检查是否有数据
+         * ================================================= */
+    
+        if (!Array.isArray(this.filteredQuestions) || this.filteredQuestions.length === 0) {
+            alert("当前没有可导入的题目");
+            return;
+        }
+    
+        /* =================================================
+         * 2. 获取当前选中的分类
+         * ================================================= */
+    
+        const deptSelect = document.getElementById('import-dept-select');
+        const selectedOption = deptSelect ? deptSelect.options[deptSelect.selectedIndex] : null;
+        
+        if (!selectedOption || selectedOption.value === "") {
+            alert("请先选择所属分类！");
+            return;
+        }
+    
+        // 获取分类信息
+        const deptInfo = {
+            id: selectedOption.value,                 // 分类 ID
+            name: selectedOption.textContent.trim(),  // 分类名称（含缩进，需要处理）
+            fullName: selectedOption.dataset.fullName || '',       // 完整分类名
+            subjectionId: selectedOption.dataset.subjectionId || '',   // 所属单位 ID
+            subjectionName: selectedOption.dataset.subjectionName || '' // 所属单位名称
+        };
+    
+        /* =================================================
+         * 3. 确认导入
+         * ================================================= */
+    
+        const confirmMessage = 
+            `确认将 ${this.filteredQuestions.length} 道题导入到【${deptInfo.fullName}】吗？\n\n` +
+            `⚠️ 提示：重复的题目（相同标题和答案）将被跳过。`;
+    
+        if (!confirm(confirmMessage)) {
+            return;
+        }
+    
+        /* =================================================
+         * 4. 发送请求
+         * ================================================= */
+    
+        const button = document.getElementById("import-btn");
+        const oldText = button ? button.textContent : "";
+    
+        if (button) {
+            button.disabled = true;
+            button.textContent = "⏳ 导入中...";
+        }
+    
+        try {
+            console.log("开始导入题库：", this.filteredQuestions.length, "道，分类:", deptInfo);
+    
+            const response = await fetch(
+                "/api/questions/import",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        questions: this.filteredQuestions,
+                        dept: deptInfo  // ★★★ 把分类信息一起传过去 ★★★
+                    })
+                }
+            );
+    
+            if (!response.ok) {
+                let message = "导入数据库失败";
+                try {
+                    const error = await response.json();
+                    message = error.message || message;
+                } catch (_) {}
+                throw new Error(message);
+            }
+    
+            const result = await response.json();
+    
+            if (!result.success) {
+                throw new Error(result.message || "导入失败");
+            }
+    
+            // 显示结果
+            const inserted = result.data?.inserted || result.inserted || this.filteredQuestions.length;
+            const skipped = result.data?.skipped || 0;
+    
+            let message = 
+                `✅ 导入成功！\n` +
+                `分类：${deptInfo.fullName}\n` +
+                `共处理 ${this.filteredQuestions.length} 道题\n` +
+                `成功导入 ${inserted} 道\n`;
+    
+            if (skipped > 0) {
+                message += `跳过 ${skipped} 道（已存在）`;
+            }
+    
+            alert(message);
+    
+        } catch (error) {
+            console.error("导入数据库失败：", error);
+            alert("❌ 导入失败：\n" + error.message);
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = oldText || "⬆ 导入数据库";
+            }
+        }
+    },
+
+
+    // =====================================================
+    // 加载部门分类（树形结构，带缩进）
+    // =====================================================
+
+    async loadDeptList() {
+        try {
+            const response = await fetch('/api/dept/list');
+            const result = await response.json();
+            
+            const select = document.getElementById('import-dept-select');
+            if (!select) return;
+            
+            // 清空
+            select.innerHTML = '<option value="">请选择分类</option>';
+            
+            if (result.success && result.data.length > 0) {
+                // 扁平化树形结构（带缩进）
+                const flattenTree = (nodes, prefix = '') => {
+                    nodes.forEach(node => {
+                        const option = document.createElement('option');
+                        option.value = node.id;
+                        option.textContent = prefix + node.name;
+                        // 存储完整路径（用于导入时显示完整分类名）
+                        option.dataset.fullName = node.name;
+                        option.dataset.subjectionId = node.subjectionId || '';
+                        option.dataset.subjectionName = node.subjectionName || '';
+                        select.appendChild(option);
+                        
+                        if (node.children && node.children.length > 0) {
+                            flattenTree(node.children, prefix + '　　');
+                        }
+                    });
+                };
+                
+                flattenTree(result.data);
+            } else {
+                // 如果没有分类数据，使用默认选项
+                const defaultDepts = [
+                    { id: '1', name: '安全管理人员' },
+                    { id: '2', name: '运输队' },
+                    { id: '3', name: '机电队' },
+                    { id: '4', name: '通风队' }
+                ];
+                defaultDepts.forEach(dept => {
+                    const option = document.createElement('option');
+                    option.value = dept.id;
+                    option.textContent = dept.name;
+                    select.appendChild(option);
+                });
+            }
+            
+        } catch (error) {
+            console.error('加载部门分类失败:', error);
+            // 加载失败时使用默认选项
+            const select = document.getElementById('import-dept-select');
+            if (select) {
+                select.innerHTML = `
+                    <option value="">请选择分类</option>
+                    <option value="1">安全管理人员</option>
+                    <option value="2">运输队</option>
+                    <option value="3">机电队</option>
+                    <option value="4">通风队</option>
+                `;
+            }
+        }
+    },
 
-    //     /* =================================================
-    //      * 检查是否有数据
-    //      * ================================================= */
-
-    //     if (
-    //         !Array.isArray(
-    //             this.filteredQuestions
-    //         ) ||
-    //         this.filteredQuestions.length === 0
-    //     ) {
-
-    //         alert(
-    //             "当前没有可导入的题目"
-    //         );
-
-    //         return;
-
-    //     }
-
-
-    //     /* =================================================
-    //      * 确认导入
-    //      * ================================================= */
-
-    //     const confirmMessage =
-    //         `确认导入 ${this.filteredQuestions.length} 道题到数据库吗？\n\n` +
-    //         `⚠️ 提示：重复的题目（相同标题和答案）将被跳过。`;
-
-
-    //     if (
-    //         !confirm(
-    //             confirmMessage
-    //         )
-    //     ) {
-
-    //         return;
-
-    //     }
-
-
-    //     /* =================================================
-    //      * 按钮状态
-    //      * ================================================= */
-
-    //     const button =
-    //         document.getElementById(
-    //             "import-btn"
-    //         );
-
-
-    //     const oldText =
-    //         button
-    //             ? button.textContent
-    //             : "";
-
-
-    //     if (button) {
-
-    //         button.disabled = true;
-
-    //         button.textContent =
-    //             "⏳ 导入中...";
-
-    //     }
-
-
-    //     try {
-
-    //         console.log(
-    //             "开始导入题库：",
-    //             this.filteredQuestions.length,
-    //             "道"
-    //         );
-
-
-    //         /* =================================================
-    //          * 发送请求
-    //          * ================================================= */
-
-    //         const response =
-    //             await fetch(
-    //                 "/api/questions/import",
-    //                 {
-    //                     method: "POST",
-
-    //                     headers: {
-    //                         "Content-Type":
-    //                             "application/json"
-    //                     },
-
-    //                     body:
-    //                         JSON.stringify({
-    //                             questions:
-    //                                 this.filteredQuestions
-    //                         })
-    //                 }
-    //             );
-
-
-    //         /* =================================================
-    //          * 检查响应
-    //          * ================================================= */
-
-    //         if (!response.ok) {
-
-    //             let message =
-    //                 "导入数据库失败";
-
-
-    //             try {
-
-    //                 const error =
-    //                     await response.json();
-
-
-    //                 message =
-    //                     error.message ||
-    //                     message;
-
-    //             }
-    //             catch (_) {}
-
-
-    //             throw new Error(
-    //                 message
-    //             );
-
-    //         }
-
-
-    //         const result =
-    //             await response.json();
-
-
-    //         if (!result.success) {
-
-    //             throw new Error(
-    //                 result.message ||
-    //                 "导入失败"
-    //             );
-
-    //         }
-
-
-    //         /* =================================================
-    //          * 显示结果
-    //          * ================================================= */
-
-    //         const inserted =
-    //             result.data?.inserted ||
-    //             result.inserted ||
-    //             this.filteredQuestions.length;
-
-
-    //         const skipped =
-    //             result.data?.skipped ||
-    //             0;
-
-
-    //         let message =
-    //             `✅ 导入成功！\n` +
-    //             `共处理 ${this.filteredQuestions.length} 道题\n` +
-    //             `成功导入 ${inserted} 道\n`;
-
-
-    //         if (skipped > 0) {
-    //             message += `跳过 ${skipped} 道（已存在）`;
-    //         }
-
-
-    //         alert(message);
-
-
-    //         /* =================================================
-    //          * 可选：刷新题库列表
-    //          * ================================================= */
-
-    //         // 如果想在导入后刷新列表，取消注释下面的代码
-    //         // await this.loadQuestions();
-
-    //     }
-    //     catch (error) {
-
-    //         console.error(
-    //             "导入数据库失败：",
-    //             error
-    //         );
-
-
-    //         alert(
-    //             "❌ 导入失败：\n" +
-    //             error.message
-    //         );
-
-    //     }
-    //     finally {
-
-    //         /* =================================================
-    //          * 恢复按钮
-    //          * ================================================= */
-
-    //         if (button) {
-
-    //             button.disabled = false;
-
-    //             button.textContent =
-    //                 oldText ||
-    //                 "⬆ 导入数据库";
-
-    //         }
-
-    //     }
-
-    // },
 
 
     /* =====================================================

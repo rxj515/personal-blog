@@ -1,6 +1,6 @@
 @echo off
 
-cd /d D:\projects\topic
+cd /d D:\personal-blog\topic
 
 call D:\anaconda3\Scripts\activate.bat topic
 

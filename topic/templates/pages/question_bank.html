@@ -1,235 +1,86 @@
 <div class="question-bank-page">
 
-    <!-- ===================================================== -->
     <!-- 页面标题 -->
-    <!-- ===================================================== -->
-
     <div class="page-header">
-
         <div>
-
-            <h1>
-                题库管理
-            </h1>
-
-            <p>
-                查看、筛选和导出AI生成题目
-            </p>
-
+            <h1>题库管理</h1>
+            <p>查看、筛选和导出AI生成题目</p>
         </div>
-
-
-        <!-- <button
-                    id="import-btn"
-                    class="btn-success"
-                    type="button"
-                >
-                    ⬆ 导入数据库
-                </button> -->
-
-
-        <button
-            id="export-btn"
-            class="btn-primary"
-            type="button"
-        >
-            ↓ 导出 Excel
-        </button>
-
     </div>
 
-
-    <!-- ===================================================== -->
-    <!-- 筛选区域 -->
-    <!-- ===================================================== -->
-
+    <!-- 操作区 + 筛选区（合并成一个卡片） -->
     <div class="question-filter-card">
 
-        <div class="question-filter-item search-item">
-
-            <label>
-                搜索题目
-            </label>
-
-            <input
-                id="question-search"
-                class="form-input"
-                type="text"
-                placeholder="搜索题目、选项、答案..."
-            >
-
-        </div>
-
-
-        <div class="question-filter-item type-item">
-
-            <label>
-                题型
-            </label>
-
-            <select
-                id="question-type-filter"
-                class="form-select"
-            >
-
-                <option value="">
-                    全部题型
-                </option>
-
-                <option value="单选题">
-                    单选题
-                </option>
-
-                <option value="多选题">
-                    多选题
-                </option>
-
-                <option value="判断题">
-                    判断题
-                </option>
-
+        <!-- 所属分类 -->
+        <div class="question-filter-item dept-item">
+            <label>所属分类</label>
+            <select id="import-dept-select" class="form-select">
+                <option value="">请选择分类</option>
             </select>
-
         </div>
 
+        <!-- 导入 / 导出按钮 -->
+        <div class="filter-actions">
+            <button id="import-btn" class="btn-success" type="button">⬆ 导入数据库</button>
+            <button id="export-btn" class="btn-primary" type="button">↓ 导出 Excel</button>
+        </div>
 
+        <!-- 搜索题目 -->
+        <div class="question-filter-item search-item">
+            <label>搜索题目</label>
+            <input id="question-search" class="form-input" type="text" placeholder="搜索题目、选项、答案...">
+        </div>
+
+        <!-- 题型 -->
+        <div class="question-filter-item type-item">
+            <label>题型</label>
+            <select id="question-type-filter" class="form-select">
+                <option value="">全部题型</option>
+                <option value="单选题">单选题</option>
+                <option value="多选题">多选题</option>
+                <option value="判断题">判断题</option>
+            </select>
+        </div>
+
+        <!-- 当前题目总数 -->
         <div class="question-filter-total">
-
-            <span class="count-label">
-                当前题目
-            </span>
-
-            <span
-                id="question-total"
-                class="count-badge"
-            >
-                0 题
-            </span>
-
+            <span class="count-label">当前题目</span>
+            <span id="question-total" class="count-badge">0 题</span>
         </div>
 
     </div>
 
-
-    <!-- ===================================================== -->
-    <!-- 题库表格 -->
-    <!-- ===================================================== -->
-
+    <!-- 表格区（保持不变） -->
     <div class="question-table-card">
-
         <div class="question-table-wrapper">
-
             <table class="data-table question-bank-table">
-
                 <thead>
-
                     <tr>
-
-                        <th class="col-index">
-                            #
-                        </th>
-
-                        <th class="col-type">
-                            题型
-                        </th>
-
-                        <th class="col-title">
-                            题目
-                        </th>
-
-                        <th class="col-option">
-                            A
-                        </th>
-
-                        <th class="col-option">
-                            B
-                        </th>
-
-                        <th class="col-option">
-                            C
-                        </th>
-
-                        <th class="col-option">
-                            D
-                        </th>
-
-                        <th class="col-option">
-                            E
-                        </th>
-
-                        <th class="col-option">
-                            F
-                        </th>
-
-                        <th class="col-answer">
-                            答案
-                        </th>
-
-                        <th class="col-analysis">
-                            解析
-                        </th>
-
+                        <th class="col-index">#</th>
+                        <th class="col-type">题型</th>
+                        <th class="col-title">题目</th>
+                        <th class="col-option">A</th>
+                        <th class="col-option">B</th>
+                        <th class="col-option">C</th>
+                        <th class="col-option">D</th>
+                        <th class="col-option">E</th>
+                        <th class="col-option">F</th>
+                        <th class="col-answer">答案</th>
+                        <th class="col-analysis">解析</th>
                     </tr>
-
                 </thead>
-
-
-                <tbody
-                    id="question-list"
-                >
-
+                <tbody id="question-list">
                     <tr>
-
-                        <td
-                            colspan="11"
-                            class="empty-cell"
-                        >
-                            正在加载题库...
-                        </td>
-
+                        <td colspan="11" class="empty-cell">正在加载题库...</td>
                     </tr>
-
                 </tbody>
-
             </table>
-
         </div>
-
-
-        <!-- ================================================= -->
-        <!-- 分页 -->
-        <!-- ================================================= -->
-
         <div class="question-pagination">
-
-            <button
-                id="question-prev"
-                class="page-btn"
-                type="button"
-            >
-                上一页
-            </button>
-
-
-            <span
-                id="question-page-info"
-                class="page-info"
-            >
-                1 / 1
-            </span>
-
-
-            <button
-                id="question-next"
-                class="page-btn"
-                type="button"
-            >
-                下一页
-            </button>
-
+            <button id="question-prev" class="page-btn" type="button">上一页</button>
+            <span id="question-page-info" class="page-info">1 / 1</span>
+            <button id="question-next" class="page-btn" type="button">下一页</button>
         </div>
-
     </div>
-
 
 </div>

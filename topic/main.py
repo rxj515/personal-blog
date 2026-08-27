@@ -1667,155 +1667,379 @@ def export_questions(
 #
 # ============================================================
 
-# @app.post("/api/questions/import")
-# def import_questions_to_db(
-#     data: dict = Body(...)
-# ):
-#     """
-#     将题目导入到MySQL数据库
-#     """
-#     try:
+@app.post("/api/questions/import")
+def import_questions_to_db(
+    data: dict = Body(...)
+):
+    """
+    将题目导入到MySQL数据库
+    """
+    try:
 
-#         print()
-#         print("=" * 60)
-#         print("开始导入题目到数据库")
-#         print("=" * 60)
+        print()
+        print("=" * 60)
+        print("开始导入题目到数据库")
+        print("=" * 60)
 
-#         # ----------------------------------------------------
-#         # 参数检查
-#         # ----------------------------------------------------
+        # ----------------------------------------------------
+        # 参数检查
+        # ----------------------------------------------------
 
-#         if not isinstance(data, dict):
+        if not isinstance(data, dict):
 
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={
-#                     "success": False,
-#                     "message": "导入参数必须是对象"
-#                 }
-#             )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "导入参数必须是对象"
+                }
+            )
 
-#         # ----------------------------------------------------
-#         # 获取题目
-#         # ----------------------------------------------------
+        # ----------------------------------------------------
+        # 获取题目
+        # ----------------------------------------------------
 
-#         questions = data.get(
-#             "questions",
-#             []
-#         )
+        questions = data.get(
+            "questions",
+            []
+        )
 
-#         if not isinstance(
-#             questions,
-#             list
-#         ):
+        if not isinstance(
+            questions,
+            list
+        ):
 
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={
-#                     "success": False,
-#                     "message": "questions必须是数组"
-#                 }
-#             )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "questions必须是数组"
+                }
+            )
 
-#         # ----------------------------------------------------
-#         # 数量检查
-#         # ----------------------------------------------------
+        # ----------------------------------------------------
+        # 数量检查
+        # ----------------------------------------------------
 
-#         if len(questions) == 0:
+        if len(questions) == 0:
 
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={
-#                     "success": False,
-#                     "message": "没有可导入的题目"
-#                 }
-#             )
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "没有可导入的题目"
+                }
+            )
 
-#         print()
-#         print(
-#             f"准备导入：{len(questions)} 道题"
-#         )
+        print()
+        print(
+            f"准备导入：{len(questions)} 道题"
+        )
 
         # ----------------------------------------------------
         # 导入数据库模块
         # ----------------------------------------------------
 
-        # import import_questions_db
+        import import_questions_db
 
         # ----------------------------------------------------
         # 调用导入函数
         # ----------------------------------------------------
 
-        # result = import_questions_db.main(
-        #     data=data
-        # )
+        result = import_questions_db.main(
+            data=data
+        )
 
         # ----------------------------------------------------
         # 检查返回
         # ----------------------------------------------------
 
-        # if result is None:
+        if result is None:
 
-        #     return JSONResponse(
-        #         status_code=500,
-        #         content={
-        #             "success": False,
-        #             "message": "导入程序没有返回结果"
-        #         }
-        #     )
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": "导入程序没有返回结果"
+                }
+            )
 
         # ----------------------------------------------------
         # 返回结果
         # ----------------------------------------------------
 
-    #     print()
-    #     print("=" * 60)
-    #     print("导入完成")
-    #     print()
-    #     print(f"处理：{result.get('total', 0)} 道")
-    #     print(f"成功：{result.get('inserted', 0)} 道")
-    #     print(f"跳过：{result.get('skipped', 0)} 道")
-    #     print("=" * 60)
-    #     print()
+        print()
+        print("=" * 60)
+        print("导入完成")
+        print()
+        print(f"处理：{result.get('total', 0)} 道")
+        print(f"成功：{result.get('inserted', 0)} 道")
+        print(f"跳过：{result.get('skipped', 0)} 道")
+        print("=" * 60)
+        print()
 
-    #     return {
-    #         "success": True,
-    #         "message": f"成功导入 {result.get('inserted', 0)} 道题",
-    #         "data": result
-    #     }
+        return {
+            "success": True,
+            "message": f"成功导入 {result.get('inserted', 0)} 道题",
+            "data": result
+        }
 
-    # except ModuleNotFoundError as e:
+    except ModuleNotFoundError as e:
 
-    #     print()
-    #     print("找不到 import_questions_db.py")
-    #     print(e)
+        print()
+        print("找不到 import_questions_db.py")
+        print(e)
 
-    #     return JSONResponse(
-    #         status_code=500,
-    #         content={
-    #             "success": False,
-    #             "message": "找不到 import_questions_db.py，请检查文件是否存在"
-    #         }
-    #     )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": "找不到 import_questions_db.py，请检查文件是否存在"
+            }
+        )
 
-    # except Exception as e:
+    except Exception as e:
 
-    #     print()
-    #     print("=" * 60)
-    #     print("导入数据库失败")
-    #     print("=" * 60)
-    #     print(e)
-    #     print()
+        print()
+        print("=" * 60)
+        print("导入数据库失败")
+        print("=" * 60)
+        print(e)
+        print()
 
-    #     return JSONResponse(
-    #         status_code=500,
-    #         content={
-    #             "success": False,
-    #             "message": f"导入数据库失败：{e}"
-    #         }
-    #     )
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"导入数据库失败：{e}"
+            }
+        )
 
+
+
+
+# ============================================================
+# 获取题库分类列表（从 Java 后端获取）
+#
+# GET /api/dept/list
+#
+# ============================================================
+
+@app.get("/api/dept/list")
+def get_dept_list():
+    """
+    从 Java 后端获取题库分类列表（包含层级结构）
+    """
+    try:
+        import requests
         
+        # Java 后端地址（端口 60853）
+        java_api_url = "http://localhost:55123/deptBankType/getExcelTypeSelectPy"
+        
+        # 后端加了 @SaIgnore 后，不需要 token 了
+        response = requests.get(
+            java_api_url,
+            timeout=10,
+            headers={"Content-Type": "application/json"}
+        )
+        
+        if response.status_code == 200:
+            # 后端直接返回数组，不是包一层对象
+            data = response.json()
+            
+            # 兼容处理：如果是字典且有 data 字段，取 data；如果是数组，直接用
+            if isinstance(data, dict):
+                items = data.get("data", [])
+            else:
+                items = data
+            
+            # 构建树形结构
+            dept_list = []
+            dept_map = {}
+            
+            # 先全部转换为字典
+            for item in items:
+                dept_id = item.get("id")
+                parent_id = item.get("parentId") or ""
+                
+                dept_map[dept_id] = {
+                    "id": dept_id,
+                    "name": item.get("name"),
+                    "code": item.get("code"),
+                    "parentId": parent_id,
+                    "superiorId": item.get("superiorId") or "",
+                    "superiorName": item.get("superiorName"),
+                    "subjectionId": item.get("subjectionId"),
+                    "subjectionName": item.get("subjectionName"),
+                    "isMine": item.get("isMine", 0),
+                    "children": []
+                }
+            
+            # 构建层级关系
+            root_list = []
+            for dept_id, dept in dept_map.items():
+                parent_id = dept["parentId"]
+                if parent_id and parent_id in dept_map:
+                    dept_map[parent_id]["children"].append(dept)
+                else:
+                    root_list.append(dept)
+            
+            return {
+                "success": True,
+                "data": root_list
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"获取分类失败：HTTP {response.status_code}",
+                "data": []
+            }
+            
+    except requests.exceptions.ConnectionError:
+        print("Java 后端未连接，使用本地缓存数据")
+        return {
+            "success": False,
+            "message": "Java 后端未连接，使用本地缓存数据",
+            "data": get_local_dept_list()
+        }
+        
+    except Exception as e:
+        print(f"获取分类异常：{e}")
+        return {
+            "success": False,
+            "message": f"获取分类失败：{str(e)}",
+            "data": get_local_dept_list()
+        }
+
+
+def get_local_dept_list():
+    """
+    本地分类数据（当 Java 后端不可用时使用）
+    """
+    return [
+        {
+            "id": "1",
+            "name": "鑫隆煤业",
+            "code": "xlmy",
+            "parentId": "",
+            "superiorId": "",
+            "superiorName": "",
+            "subjectionId": "001",
+            "subjectionName": "鑫隆煤业",
+            "isMine": 1,
+            "children": [
+                {
+                    "id": "101",
+                    "name": "抽采工",
+                    "code": "ccg",
+                    "parentId": "1",
+                    "superiorId": "1",
+                    "superiorName": "鑫隆煤业",
+                    "subjectionId": "001",
+                    "subjectionName": "鑫隆煤业",
+                    "isMine": 1,
+                    "children": []
+                },
+                {
+                    "id": "102",
+                    "name": "泵站值班员",
+                    "code": "bzzby",
+                    "parentId": "1",
+                    "superiorId": "1",
+                    "superiorName": "鑫隆煤业",
+                    "subjectionId": "001",
+                    "subjectionName": "鑫隆煤业",
+                    "isMine": 1,
+                    "children": []
+                },
+                {
+                    "id": "103",
+                    "name": "观察工",
+                    "code": "gcg",
+                    "parentId": "1",
+                    "superiorId": "1",
+                    "superiorName": "鑫隆煤业",
+                    "subjectionId": "001",
+                    "subjectionName": "鑫隆煤业",
+                    "isMine": 1,
+                    "children": []
+                },
+                {
+                    "id": "104",
+                    "name": "探水",
+                    "code": "ts",
+                    "parentId": "1",
+                    "superiorId": "1",
+                    "superiorName": "鑫隆煤业",
+                    "subjectionId": "001",
+                    "subjectionName": "鑫隆煤业",
+                    "isMine": 1,
+                    "children": [
+                        {
+                            "id": "1041",
+                            "name": "探水工",
+                            "code": "tsg",
+                            "parentId": "104",
+                            "superiorId": "1",
+                            "superiorName": "鑫隆煤业",
+                            "subjectionId": "001",
+                            "subjectionName": "鑫隆煤业",
+                            "isMine": 1,
+                            "children": []
+                        }
+                    ]
+                },
+                {
+                    "id": "105",
+                    "name": "地面机电队",
+                    "code": "dmjdd",
+                    "parentId": "1",
+                    "superiorId": "1",
+                    "superiorName": "鑫隆煤业",
+                    "subjectionId": "001",
+                    "subjectionName": "鑫隆煤业",
+                    "isMine": 1,
+                    "children": []
+                },
+                {
+                    "id": "106",
+                    "name": "监控信息",
+                    "code": "jkxx",
+                    "parentId": "1",
+                    "superiorId": "1",
+                    "superiorName": "鑫隆煤业",
+                    "subjectionId": "001",
+                    "subjectionName": "鑫隆煤业",
+                    "isMine": 1,
+                    "children": []
+                },
+                {
+                    "id": "107",
+                    "name": "安全管理人员",
+                    "code": "aqglry",
+                    "parentId": "1",
+                    "superiorId": "1",
+                    "superiorName": "鑫隆煤业",
+                    "subjectionId": "001",
+                    "subjectionName": "鑫隆煤业",
+                    "isMine": 1,
+                    "children": []
+                },
+                {
+                    "id": "108",
+                    "name": "通风机房",
+                    "code": "tffj",
+                    "parentId": "1",
+                    "superiorId": "1",
+                    "superiorName": "鑫隆煤业",
+                    "subjectionId": "001",
+                    "subjectionName": "鑫隆煤业",
+                    "isMine": 1,
+                    "children": []
+                }
+            ]
+        }
+    ]
 
 # ============================================================
 # 33. 获取页面列表
