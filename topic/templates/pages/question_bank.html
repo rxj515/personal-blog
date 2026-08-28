@@ -8,21 +8,31 @@
         </div>
     </div>
 
-    <!-- 操作区 + 筛选区（合并成一个卡片） -->
+    <!-- 操作区 + 筛选区 -->
     <div class="question-filter-card">
 
-        <!-- 所属分类 -->
-        <div class="question-filter-item dept-item">
-            <label>所属分类</label>
-            <select id="import-dept-select" class="form-select">
-                <option value="">请选择分类</option>
+        <!-- 导入目标分类 -->
+        <div class="question-filter-item import-target-item">
+            <label>📥 导入到分类 <span class="required-star">*</span></label>
+            <select id="import-target-select" class="form-select">
+                <option value="">-- 请选择目标分类 --</option>
             </select>
         </div>
 
-        <!-- 导入 / 导出按钮 -->
+        <!-- 操作按钮 -->
         <div class="filter-actions">
-            <button id="import-btn" class="btn-success" type="button">⬆ 导入数据库</button>
-            <button id="export-btn" class="btn-primary" type="button">↓ 导出 Excel</button>
+            <div class="selection-info">
+                已选 <span id="selected-count">0</span> 题
+            </div>
+            <button id="import-selected-btn" class="btn-success" type="button" disabled>
+                ⬆ 导入选中 (<span id="import-count">0</span>)
+            </button>
+            <button id="import-all-btn" class="btn-primary" type="button">
+                ⬆ 导入全部
+            </button>
+            <button id="export-btn" class="btn-primary" type="button">
+                ↓ 导出 Excel
+            </button>
         </div>
 
         <!-- 搜索题目 -->
@@ -50,12 +60,15 @@
 
     </div>
 
-    <!-- 表格区（保持不变） -->
+    <!-- 表格区 -->
     <div class="question-table-card">
         <div class="question-table-wrapper">
             <table class="data-table question-bank-table">
                 <thead>
                     <tr>
+                        <th class="col-checkbox">
+                            <input type="checkbox" id="select-all" title="全选/取消全选">
+                        </th>
                         <th class="col-index">#</th>
                         <th class="col-type">题型</th>
                         <th class="col-title">题目</th>
@@ -71,7 +84,7 @@
                 </thead>
                 <tbody id="question-list">
                     <tr>
-                        <td colspan="11" class="empty-cell">正在加载题库...</td>
+                        <td colspan="12" class="empty-cell">正在加载题库...</td>
                     </tr>
                 </tbody>
             </table>
