@@ -87,6 +87,14 @@ window.Knowledge = (function () {
                 'click',
                 updateKnowledge
             );
+
+        // 打标签
+        document
+            .getElementById('tag-articles-btn')
+            ?.addEventListener(
+                'click',
+                tagArticles
+            );
     }
 
 
@@ -892,21 +900,15 @@ window.Knowledge = (function () {
                 'update-knowledge-btn'
             );
 
-
         if (!button) {
             return;
         }
 
-
         const oldText =
             button.textContent;
 
-
         button.disabled = true;
-
-        button.textContent =
-            '更新中...';
-
+        button.textContent = '更新中...';
 
         try {
 
@@ -914,7 +916,6 @@ window.Knowledge = (function () {
                 await window.AppAPI.post(
                     '/api/knowledge/update'
                 );
-
 
             if (!result.success) {
 
@@ -924,16 +925,16 @@ window.Knowledge = (function () {
                 );
             }
 
-
             showToast(
-                result.message ||
-                '法规知识库更新完成',
+                '✅ 知识库更新完成！',
                 'success'
             );
 
-
+            // ✅ 重新加载列表
             await loadKnowledge();
 
+            // ✅ 触发自定义事件，通知 app.js 刷新侧边栏
+            document.dispatchEvent(new CustomEvent('knowledgeUpdated'));
 
         } catch (error) {
 
@@ -942,19 +943,82 @@ window.Knowledge = (function () {
                 error
             );
 
-
             showToast(
                 error.message,
                 'error'
             );
 
+        } finally {
+
+            button.disabled = false;
+            button.textContent = oldText;
+        }
+    }
+
+
+    // =====================================================
+    // 打标签
+    // =====================================================
+
+    async function tagArticles() {
+
+        const button =
+            document.getElementById(
+                'tag-articles-btn'
+            );
+
+        if (!button) {
+            return;
+        }
+
+        const oldText =
+            button.textContent;
+
+        button.disabled = true;
+        button.textContent = '打标签中...';
+
+        try {
+
+            const result =
+                await window.AppAPI.post(
+                    '/api/tag/articles'
+                );
+
+            if (!result.success) {
+
+                throw new Error(
+                    result.message ||
+                    '打标签失败'
+                );
+            }
+
+            showToast(
+                '✅ 打标签完成！',
+                'success'
+            );
+
+            // 重新加载知识库（刷新列表）
+            await loadKnowledge();
+
+            // ✅ 触发自定义事件，通知 app.js 刷新侧边栏
+            document.dispatchEvent(new CustomEvent('knowledgeUpdated'));
+
+        } catch (error) {
+
+            console.error(
+                '打标签失败：',
+                error
+            );
+
+            showToast(
+                '❌ ' + error.message,
+                'error'
+            );
 
         } finally {
 
             button.disabled = false;
-
-            button.textContent =
-                oldText;
+            button.textContent = oldText;
         }
     }
 

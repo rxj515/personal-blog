@@ -16,16 +16,22 @@
 
         </div>
 
+        <div style="display: flex; gap: 10px;">
+            <button
+                class="btn-primary"
+                id="update-knowledge-btn"
+            >
+                更新知识库
+            </button>
 
-        <button
-            class="btn-primary"
-            id="update-knowledge-btn"
+            <!-- ✅ 新增：打标签按钮 -->
+            <button
+            class="btn-tag"
+            id="tag-articles-btn"
         >
-
-            更新知识库
-
+            🏷️ 打标签
         </button>
-
+        </div>
 
     </div>
 
@@ -98,6 +104,8 @@
 
 
 
+
+
     <!-- 知识库主体 -->
 
     <div class="knowledge-card">
@@ -137,7 +145,6 @@
 
 
 
-
         <!-- 信息 -->
 
 
@@ -157,7 +164,6 @@
 
 
 
-
         <!-- 列表 -->
 
 
@@ -169,18 +175,11 @@
 
         >
 
-
             <div class="empty-state">
-
                 正在加载知识库...
-
             </div>
 
-
         </div>
-
-
-
 
 
 

@@ -772,3 +772,28 @@
 
 
 }
+
+.btn-tag {
+    height:44px;
+    padding:0 26px;
+    border:none;
+    border-radius:14px;
+    background:#6c5ce7;
+    color:white;
+    font-size:14px;
+    font-weight:600;
+    cursor:pointer;
+    box-shadow: 0 8px 20px rgba(108,92,231,.25);
+    transition:.25s;
+    white-space: nowrap;
+}
+
+.btn-tag:hover {
+    transform:translateY(-2px);
+}
+
+.btn-tag:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}

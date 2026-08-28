@@ -2585,24 +2585,44 @@ if __name__ == "__main__":
         port=8000
     )
 
-import threading
-import time
+# ============================================================
+# 打标签接口（独立）
+#
+# POST /api/tag/articles
+#
+# ============================================================
 
-@app.on_event("startup")
-async def startup_event():
+@app.post("/api/tag/articles")
+def tag_articles_api():
     """
-    启动时自动给法条打标签（后台线程，不阻塞服务）
+    给法条打工种标签（独立接口）
     """
-    def tag_articles_background():
-        try:
-            # 打标签逻辑...
-            import tag_articles
-            tag_articles.main()
-            print("✅ 已自动给法条打上工种标签")
-        except Exception as e:
-            print(f"❌ 自动打标签失败：{e}")
-    
-    # 放到后台线程，不阻塞服务启动
-    threading.Thread(target=tag_articles_background, daemon=True).start()
-    
-    print("✅ 打标签任务已在后台启动，服务正常运行中")
+    try:
+
+        print()
+        print("=" * 60)
+        print("🏷️ 开始打工种标签...")
+        print("=" * 60)
+
+        import tag_articles
+        tag_articles.main()
+
+        print("✅ 工种标签打标完成")
+        print("=" * 60)
+        print()
+
+        return {
+            "success": True,
+            "message": "打标签完成"
+        }
+
+    except Exception as e:
+
+        print()
+        print("❌ 打标签失败：", e)
+        print()
+
+        return {
+            "success": False,
+            "message": f"打标签失败：{e}"
+        }

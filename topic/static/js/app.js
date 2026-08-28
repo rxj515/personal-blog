@@ -97,7 +97,7 @@ const App = {
         this.loadGlobalAIConfig();
 
         this.loadPage('dashboard');
-
+        this.updateKnowledgeCount();
         // ✅ 监听 AI 配置变化事件
         document.addEventListener(
             "aiConfigChanged",
@@ -123,6 +123,11 @@ const App = {
 
             }
         );
+        // ✅ 新增：监听知识库更新事件
+    document.addEventListener('knowledgeUpdated', () => {
+        console.log('📨 收到知识库更新通知，刷新侧边栏数量');
+        this.updateKnowledgeCount();
+    });
 
     },
 
@@ -373,6 +378,7 @@ const App = {
              */
 
             await this.updateSidebarAI();
+            await this.updateKnowledgeCount();
 
 
             /*
@@ -886,23 +892,23 @@ const App = {
     async updateSidebarAI() {
 
         try {
-
+    
             const result =
                 await window.AppAPI.get(
                     "/api/config"
                 );
-
+    
             if (!result || !result.data) {
                 return;
             }
-
+    
             const config = result.data;
-
+    
             const provider =
                 config.provider ||
                 config.ai ||
                 "ollama";
-
+    
             // AI 服务显示名称映射
             const names = {
                 ollama: "Ollama",
@@ -912,60 +918,88 @@ const App = {
                 zhipu: "智谱AI",
                 custom: "自定义"
             };
-
+    
             const displayName =
                 names[provider] || provider;
-
+    
             // 侧边栏 AI 服务
             const sidebarService =
                 document.getElementById(
                     "sidebar-ai-service"
                 );
-
+    
             if (sidebarService) {
-
+    
                 sidebarService.textContent =
                     displayName;
             }
-
+    
             // 侧边栏 AI 模型
             const sidebarModel =
                 document.getElementById(
                     "sidebar-ai-model"
                 );
-
+    
             if (sidebarModel) {
-
+    
                 sidebarModel.textContent =
                     config.model || "--";
             }
-
+    
             // 顶部 AI 名称
             const headerAiName =
                 document.getElementById(
                     "header-ai-name"
                 );
-
+    
             if (headerAiName) {
-
+    
                 headerAiName.textContent =
                     displayName;
             }
-
+    
             console.log(
                 "侧边栏 AI 信息已更新：",
                 displayName,
                 config.model
             );
-
+    
         } catch (error) {
-
+    
             console.error(
                 "更新侧边栏 AI 信息失败：",
                 error
             );
         }
-
+    
+    },
+    
+    // ✅ 在这里加新方法（逗号后面）
+    async updateKnowledgeCount() {
+    
+        try {
+    
+            const result = await window.AppAPI.get("/api/knowledge/statistics");
+    
+            if (!result || !result.success) {
+                console.warn('获取知识库统计失败:', result?.message);
+                return;
+            }
+    
+            const total = result.data?.total;
+    
+            if (total !== undefined && total !== null) {
+                const countEl = document.querySelector('.sidebar-footer .footer-row b');
+                if (countEl) {
+                    countEl.textContent = total + '条';
+                    console.log('✅ 知识库数量已更新：', total);
+                }
+            }
+    
+        } catch (error) {
+    
+            console.error('更新知识库数量失败：', error);
+        }
     },
 
 
