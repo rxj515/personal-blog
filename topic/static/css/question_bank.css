@@ -73,7 +73,10 @@
 /* 操作按钮 */
 .filter-actions {
     display: flex;
+    align-items: center;
     gap: 10px;
+    flex-wrap: wrap;
+    padding: 4px 0;
 }
 
 /* 搜索框 */
@@ -140,7 +143,7 @@
 
 .question-bank-table {
     width: 100%;
-    min-width: 1500px;
+    min-width: 1600px;  /* 从1500px增加到1600px，为删除列腾出空间 */
     border-collapse: collapse;
     table-layout: fixed;
 }
@@ -173,12 +176,11 @@
 }
 
 /* 列宽 */
-
-.col-checkbox  {
+.col-checkbox {
     width: 40px;
 }
 
-.col-checkbox  input[type="checkbox"] {
+.col-checkbox input[type="checkbox"] {
     width: 16px;
     height: 16px;
     cursor: pointer;
@@ -194,11 +196,11 @@
 }
 
 .col-title {
-    width: 330px;
+    width: 300px;  /* 从330px调整为300px */
 }
 
 .col-option {
-    width: 120px;
+    width: 110px;  /* 从120px调整为110px */
 }
 
 .col-answer {
@@ -206,7 +208,13 @@
 }
 
 .col-analysis {
-    width: 300px;
+    width: 260px;  /* 从300px调整为260px */
+}
+
+.col-delete {
+    width: 70px;   /* 新增删除列 */
+    min-width: 70px;
+    text-align: center;
 }
 
 /* 单元格 */
@@ -250,70 +258,38 @@
     word-break: break-word;
 }
 
-/* 空数据 */
-.empty-cell {
-    height: 180px;
-    text-align: center !important;
-    vertical-align: middle !important;
-    color: #94a3b8 !important;
-}
-
 /* =========================================================
-   分页
+   删除按钮样式
 ========================================================= */
 
-.question-pagination {
-    height: 55px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 14px;
-}
-
-.page-btn {
-    height: 32px;
-    padding: 0 16px;
-    border: 1px solid #e2e8f0;
+/* 表格内删除按钮 */
+.btn-delete-row {
+    padding: 4px 12px;
+    border: 1px solid #fecaca;
     border-radius: 6px;
-    background: #ffffff;
-    color: #475569;
-    cursor: pointer;
+    background: #fef2f2;
+    color: #dc2626;
     font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
 }
 
-.page-btn:hover:not(:disabled) {
-    color: #2563eb;
-    border-color: #2563eb;
-    background: #eff6ff;
+.btn-delete-row:hover {
+    background: #dc2626;
+    color: #ffffff;
+    border-color: #dc2626;
+    transform: scale(1.05);
+    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
 }
 
-.page-btn:disabled {
-    color: #cbd5e1;
-    cursor: not-allowed;
-}
-
-/* 滚动条 */
-.question-table-wrapper::-webkit-scrollbar {
-    height: 8px;
-}
-
-.question-table-wrapper::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 10px;
-}
-
-/* 小屏适配 */
-@media(max-width:1200px) {
-    .question-filter-card {
-        flex-wrap: wrap;
-    }
-    .question-filter-total {
-        margin-left: 0;
-    }
+.btn-delete-row:active {
+    transform: scale(0.95);
 }
 
 /* =========================================================
-   按钮样式
+   按钮样式（扩展）
 ========================================================= */
 
 .btn-success {
@@ -370,8 +346,116 @@
 }
 
 /* =========================================================
+   危险按钮（删除）
+========================================================= */
+
+.btn-danger {
+    height: 38px;
+    padding: 0 20px;
+    border: none;
+    border-radius: 8px;
+    background: #dc2626;
+    color: #ffffff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.btn-danger:hover:not(:disabled) {
+    background: #b91c1c;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+}
+
+.btn-danger:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* =========================================================
+   选中数量显示
+========================================================= */
+
+.selection-info {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 14px;
+    height: 36px;
+    background: #f0f4ff;
+    border-radius: 8px;
+    color: #4a6cf7;
+    font-weight: 600;
+    font-size: 13px;
+    white-space: nowrap;
+    gap: 4px;
+}
+
+.selection-info span {
+    color: #4a6cf7;
+}
+
+/* =========================================================
+   空数据
+========================================================= */
+
+.empty-cell {
+    height: 180px;
+    text-align: center !important;
+    vertical-align: middle !important;
+    color: #94a3b8 !important;
+}
+
+/* =========================================================
+   分页
+========================================================= */
+
+.question-pagination {
+    height: 55px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+}
+
+.page-btn {
+    height: 32px;
+    padding: 0 16px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    background: #ffffff;
+    color: #475569;
+    cursor: pointer;
+    font-size: 12px;
+}
+
+.page-btn:hover:not(:disabled) {
+    color: #2563eb;
+    border-color: #2563eb;
+    background: #eff6ff;
+}
+
+.page-btn:disabled {
+    color: #cbd5e1;
+    cursor: not-allowed;
+}
+
+/* 滚动条 */
+.question-table-wrapper::-webkit-scrollbar {
+    height: 8px;
+}
+
+.question-table-wrapper::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 10px;
+}
+
+/* =========================================================
    筛选卡片内联样式清理后使用的公共样式
 ========================================================= */
+
 .form-select {
     border: 1px solid #d1d5db;
     border-radius: 6px;
@@ -441,37 +525,95 @@
     padding: 8px 12px;
 }
 
-/* 导入按钮区 - 与导入分类联动 */
-.filter-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    padding: 4px 0;
-}
+/* =========================================================
+   小屏适配
+========================================================= */
 
-/* 选中数量显示 */
-.selection-info {
-    display: inline-flex;
-    align-items: center;
-    padding: 4px 14px;
-    height: 36px;
-    background: #f0f4ff;
-    border-radius: 8px;
-    color: #4a6cf7;
-    font-weight: 600;
-    font-size: 13px;
-    white-space: nowrap;
-    gap: 4px;
-}
-
-.selection-info span {
-    color: #4a6cf7;
-}
-
-/* 响应式适配 */
 @media (max-width: 1200px) {
+    .question-filter-card {
+        flex-wrap: wrap;
+    }
+    .question-filter-total {
+        margin-left: 0;
+    }
     .import-target-item {
         width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .filter-actions {
+        flex-direction: column;
+        align-items: stretch;
+        width: 100%;
+    }
+    
+    .filter-actions .btn-success,
+    .filter-actions .btn-primary,
+    .filter-actions .btn-danger {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    .selection-info {
+        justify-content: center;
+    }
+    
+    .question-bank-table {
+        min-width: 1200px;
+    }
+    
+    .col-delete {
+        width: 55px;
+        min-width: 55px;
+    }
+    
+    .btn-delete-row {
+        padding: 2px 8px;
+        font-size: 11px;
+    }
+    
+    .col-title {
+        width: 200px;
+    }
+    
+    .col-option {
+        width: 80px;
+    }
+    
+    .col-analysis {
+        width: 150px;
+    }
+}
+
+@media (max-width: 480px) {
+    .question-filter-card {
+        padding: 12px;
+    }
+    
+    .question-bank-table {
+        min-width: 900px;
+    }
+    
+    .col-title {
+        width: 150px;
+    }
+    
+    .col-option {
+        width: 60px;
+    }
+    
+    .col-analysis {
+        width: 100px;
+    }
+    
+    .col-delete {
+        width: 45px;
+        min-width: 45px;
+    }
+    
+    .btn-delete-row {
+        padding: 2px 6px;
+        font-size: 10px;
     }
 }

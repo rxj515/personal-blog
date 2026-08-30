@@ -1,439 +1,104 @@
 <div class="ai-question-page">
 
-
     <!-- 页面标题 -->
-
     <div class="page-header">
-
         <div>
-
-            <h1>
-                AI智能出题
-            </h1>
-
-            <p>
-                基于法规知识库自动生成考试题目
-            </p>
-
+            <h1>AI智能出题</h1>
+            <p>基于法规知识库自动生成考试题目</p>
         </div>
-
-
     </div>
 
-
-
-
-
     <div class="ai-layout">
-
-
 
         <!-- ==========================
              出题配置
         =========================== -->
-
-
         <div class="config-card">
-
-
-            <div class="card-title">
-
-                出题配置
-
-            </div>
-
-
-
-
-
-
-<div class="form-group">
-
-    <label>
-
-        AI模型
-
-    </label>
-
-
-
-    <div
-
-        id="ai-model"
-
-        class="form-input ai-model-display"
-
-    >
-
-        正在读取当前模型...
-
-    </div>
-
-</div>
-
-
-
-
-
-
-<div class="form-group">
-
-    <label>
-        分类（工种）
-    </label>
-
-    <select
-        id="ai-dept-select"
-        class="form-select"
-    >
-
-        <option value="">
-            全部工种
-        </option>
-
-    </select>
-
-</div>
-
-
-
+            <div class="card-title">出题配置</div>
 
             <div class="form-group">
+                <label>AI模型</label>
+                <div id="ai-model" class="form-input ai-model-display">正在读取当前模型...</div>
+            </div>
 
-
-                <label>
-                    题型
-                </label>
-
-
-                <select
-                    id="question-type"
-                    class="form-select"
-                >
-
-
-                    <option value="单选题">
-                        单选题
-                    </option>
-
-
-                    <option value="多选题">
-                        多选题
-                    </option>
-
-
-                    <option value="判断题">
-                        判断题
-                    </option>
-
-
+            <div class="form-group">
+                <label>分类（工种）</label>
+                <select id="ai-dept-select" class="form-select">
+                    <option value="">全部工种</option>
                 </select>
-
-
             </div>
-
-
-
-
-
-
-
 
             <div class="form-group">
-
-
-                <label>
-                    题目数量
-                </label>
-
-
-                <input
-
-                    id="question-count"
-
-                    class="form-input"
-
-                    type="number"
-
-                    min="1"
-
-                    max="100"
-
-                    value="10"
-
-                >
-
-
+                <label>题型</label>
+                <select id="question-type" class="form-select">
+                    <option value="单选题">单选题</option>
+                    <option value="多选题">多选题</option>
+                    <option value="判断题">判断题</option>
+                </select>
             </div>
 
-
-
-
-
-
-
-
-            <button
-
-                id="generate-btn"
-
-                class="btn-primary"
-
-                type="button"
-
-            >
-
-                ✦ 开始AI出题
-
-            </button>
-
-
-
-
-
-            <div
-
-                id="generate-message"
-
-                class="operation-message"
-
-            >
-
+            <div class="form-group">
+                <label>题目数量</label>
+                <input id="question-count" class="form-input" type="number" min="1" max="100" value="10">
             </div>
 
+            <button id="generate-btn" class="btn-primary" type="button">✦ 开始AI出题</button>
 
-
+            <div id="generate-message" class="operation-message"></div>
         </div>
-
-
-
-
-
-
-
 
         <!-- ==========================
-             生成结果
+             生成结果（已加入删除按钮）
         =========================== -->
-
-
         <div class="result-card">
-
-
             <div class="result-header">
-
-
-                <div class="card-title">
-
-                    生成结果
-
-                </div>
-
-
-
-
-
-                <button
-
-                    id="export-btn"
-
-                    class="btn-export"
-
-                    type="button"
-
-                >
-
-                    ↓ 导出Excel
-
-
-                </button>
-
-
-
+                <div class="card-title">生成结果</div>
+                <button id="export-btn" class="btn-export" type="button">↓ 导出Excel</button>
             </div>
 
+            <div id="generate-status" class="generate-status hidden">AI正在生成题目，请稍候...</div>
 
-
-
-
-
-            <div
-
-                id="generate-status"
-
-                class="generate-status hidden"
-
-            >
-
-                AI正在生成题目，请稍候...
-
-            </div>
-
-
-
-
-
-
-
-            <div
-
-                id="generate-result"
-
-                class="question-result"
-
-            >
-
-
-
+            <div id="generate-result" class="question-result">
                 <table class="question-table">
-
-
-
                     <colgroup>
-
-
                         <col class="col-index">
-
-
                         <col class="col-question">
-
-
                         <col class="col-option">
-
                         <col class="col-option">
-
                         <col class="col-option">
-
                         <col class="col-option">
-
                         <col class="col-option">
-
                         <col class="col-option">
-
-
                         <col class="col-answer">
-
-
                         <col class="col-analysis">
-
-
+                        <col class="col-delete">  <!-- 新增删除列 -->
                     </colgroup>
 
-
-
-
-
                     <thead>
-
                         <tr>
-
-
-                            <th>
-                                序号
-                            </th>
-
-
-                            <th>
-                                题目
-                            </th>
-
-
-                            <th>
-                                A
-                            </th>
-
-
-                            <th>
-                                B
-                            </th>
-
-
-                            <th>
-                                C
-                            </th>
-
-
-                            <th>
-                                D
-                            </th>
-
-
-                            <th>
-                                E
-                            </th>
-
-
-                            <th>
-                                F
-                            </th>
-
-
-                            <th>
-                                答案
-                            </th>
-
-
-                            <th>
-                                解析
-                            </th>
-
-
-
+                            <th>序号</th>
+                            <th>题目</th>
+                            <th>A</th>
+                            <th>B</th>
+                            <th>C</th>
+                            <th>D</th>
+                            <th>E</th>
+                            <th>F</th>
+                            <th>答案</th>
+                            <th>解析</th>
+                            <th>操作</th>  <!-- 新增操作列 -->
                         </tr>
-
-
                     </thead>
 
-
-
-
-
-
-                    <tbody
-
-                        id="question-table-body"
-
-                    >
-
-
+                    <tbody id="question-table-body">
+                        <!-- 这里由 JavaScript 动态渲染，每行会包含删除按钮 -->
                     </tbody>
-
-
-
                 </table>
-
-
-
             </div>
 
-
-
-
-
-
-
-            <div
-
-                id="result-message"
-
-                class="operation-message"
-
-            >
-
-            </div>
-
-
-
+            <div id="result-message" class="operation-message"></div>
         </div>
 
-
-
-
-
     </div>
-
-
-
-
 
 </div>

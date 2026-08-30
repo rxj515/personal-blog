@@ -22,6 +22,7 @@ const QuestionBank = {
         this.bindEvents();
         await this.loadQuestions();
         this.bindCheckboxEvents();
+        this.bindDeleteEvents();
     },
 
     // =====================================================
@@ -58,6 +59,7 @@ const QuestionBank = {
                     this.currentPage--;
                     this.renderQuestions();
                     this.bindCheckboxEvents();
+                    this.bindDeleteEvents();
                 }
             };
         }
@@ -70,6 +72,7 @@ const QuestionBank = {
                     this.currentPage++;
                     this.renderQuestions();
                     this.bindCheckboxEvents();
+                    this.bindDeleteEvents();
                 }
             };
         }
@@ -91,33 +94,92 @@ const QuestionBank = {
         if (importAllBtn) {
             importAllBtn.onclick = () => this.importAllQuestions();
         }
+
+        // 删除选中按钮
+        const deleteSelectedBtn = document.getElementById('delete-selected-btn');
+        if (deleteSelectedBtn) {
+            deleteSelectedBtn.onclick = () => this.deleteSelectedQuestions();
+        }
     },
 
     // =====================================================
-    // 加载题库
+    // 绑定删除事件（事件委托）
+    // =====================================================
+
+    bindDeleteEvents() {
+        const list = document.getElementById('question-list');
+        if (!list) return;
+
+        list.removeEventListener('click', this._deleteHandler);
+        
+        this._deleteHandler = (e) => {
+            const deleteBtn = e.target.closest('.btn-delete-row');
+            if (deleteBtn) {
+                const row = deleteBtn.closest('tr');
+                if (row) {
+                    const index = parseInt(row.dataset.index);
+                    if (!isNaN(index)) {
+                        this.deleteSingleQuestion(index);
+                    }
+                }
+            }
+        };
+        
+        list.addEventListener('click', this._deleteHandler);
+    },
+
+    // =====================================================
+    // 加载题库（同时加载历史题库和 _new.json）
     // =====================================================
 
     async loadQuestions() {
         const list = document.getElementById('question-list');
         if (!list) return;
 
-        list.innerHTML = `<tr><td colspan="12" class="empty-cell">⏳ 正在读取题库...</td></tr>`;
+        list.innerHTML = `<tr><td colspan="13" class="empty-cell">⏳ 正在读取题库...</td></tr>`;
 
         try {
-            const result = await window.AppAPI.get('/api/questions/data');
+            // 1. 加载历史题库
+            const historyResult = await window.AppAPI.get('/api/questions/data');
+            const historyQuestions = (historyResult?.success && Array.isArray(historyResult.data)) 
+                ? historyResult.data 
+                : [];
 
-            if (!result?.success) {
-                throw new Error(result?.message || '读取题库失败');
-            }
+            // 2. 加载新生成的题目（_new.json）
+            const newResult = await window.AppAPI.get('/api/questions/new-data');
+            const newQuestions = (newResult?.success && Array.isArray(newResult.data)) 
+                ? newResult.data 
+                : [];
 
-            this.questions = Array.isArray(result.data) ? result.data : [];
+            // 3. 合并，并去重（使用 id 或 article+title）
+            const allQuestions = [...historyQuestions];
+            const existed = new Set();
+            
+            historyQuestions.forEach(q => {
+                // 优先用 id，没有则用 article+title
+                const key = q.id || `${q.article || ''}|${q.title || ''}`;
+                existed.add(key);
+            });
+            
+            let addedCount = 0;
+            newQuestions.forEach(q => {
+                const key = q.id || `${q.article || ''}|${q.title || ''}`;
+                if (!existed.has(key)) {
+                    allQuestions.push(q);
+                    existed.add(key);
+                    addedCount++;
+                }
+            });
+
+            this.questions = allQuestions;
             this.filteredQuestions = [...this.questions];
             this.currentPage = 1;
 
-            console.log(`✅ 题库读取成功：${this.questions.length} 道`);
+            console.log(`✅ 题库读取成功：历史题库 ${historyQuestions.length} 道 + 新题 ${newQuestions.length} 道（新增 ${addedCount} 道）= 共 ${this.questions.length} 道`);
             this.updateTotal();
             this.renderQuestions();
             this.bindCheckboxEvents();
+            this.bindDeleteEvents();
 
         } catch (error) {
             console.error('❌ 题库读取失败:', error);
@@ -125,7 +187,7 @@ const QuestionBank = {
             this.filteredQuestions = [];
             list.innerHTML = `
                 <tr>
-                    <td colspan="12" class="empty-cell">
+                    <td colspan="13" class="empty-cell">
                         <div class="empty-state">
                             <div class="empty-icon">❌</div>
                             <div class="empty-title">题库读取失败</div>
@@ -157,6 +219,7 @@ const QuestionBank = {
         this.updateTotal();
         this.renderQuestions();
         this.bindCheckboxEvents();
+        this.bindDeleteEvents();
     },
 
     // =====================================================
@@ -220,7 +283,6 @@ const QuestionBank = {
         const start = (this.currentPage - 1) * this.pageSize;
         const data = this.filteredQuestions.slice(start, start + this.pageSize);
 
-        // 更新分页
         const pageInfo = document.getElementById('question-page-info');
         if (pageInfo) pageInfo.textContent = `${this.currentPage} / ${totalPage}`;
 
@@ -230,11 +292,10 @@ const QuestionBank = {
         const next = document.getElementById('question-next');
         if (next) next.disabled = this.currentPage >= totalPage;
 
-        // 空数据
         if (!data.length) {
             list.innerHTML = `
                 <tr>
-                    <td colspan="12" class="empty-cell">
+                    <td colspan="13" class="empty-cell">
                         <div class="empty-state">
                             <div class="empty-icon">📭</div>
                             <div class="empty-title">暂无题目</div>
@@ -246,12 +307,11 @@ const QuestionBank = {
             return;
         }
 
-        // 渲染
         list.innerHTML = data.map((q, i) => this.createRow(q, start + i)).join('');
     },
 
     // =====================================================
-    // 创建行
+    // 创建行（已加入删除按钮，存储 id）
     // =====================================================
 
     createRow(q, index) {
@@ -264,11 +324,12 @@ const QuestionBank = {
         };
 
         const esc = this.escapeHtml;
+        const questionId = q.id || '';
 
         return `
-            <tr>
+            <tr data-index="${index}" data-id="${questionId}">
                 <td class="col-checkbox">
-                    <input type="checkbox" class="row-checkbox" data-id="${q.id || index}">
+                    <input type="checkbox" class="row-checkbox" data-index="${index}" data-id="${questionId}">
                 </td>
                 <td class="question-index-cell">${index + 1}</td>
                 <td><span class="question-type-tag">${esc(fields.type)}</span></td>
@@ -276,8 +337,264 @@ const QuestionBank = {
                 ${fields.options.map(opt => `<td class="question-option-cell">${esc(opt)}</td>`).join('')}
                 <td class="question-answer-cell">${fields.answer ? `<span class="answer-tag">${esc(fields.answer)}</span>` : '-'}</td>
                 <td class="question-analysis-cell" title="${esc(fields.analysis)}">${fields.analysis ? esc(fields.analysis) : '-'}</td>
+                <td class="col-delete">
+                    <button class="btn-delete-row" data-index="${index}" data-id="${questionId}" title="删除此题">删除</button>
+                </td>
             </tr>
         `;
+    },
+
+    // =====================================================
+    // ✅ 删除单道题（通过ID精确删除，修复筛选后删除问题）
+    // =====================================================
+
+    async deleteSingleQuestion(index) {
+        if (!this.questions || this.questions.length === 0) {
+            return;
+        }
+
+        // ✅ 关键修复：从 filteredQuestions 中获取题目（而不是 questions）
+        if (index < 0 || index >= this.filteredQuestions.length) {
+            console.warn('删除失败：索引超出范围', index);
+            return;
+        }
+
+        // ✅ 从筛选后的列表中获取题目
+        const question = this.filteredQuestions[index];
+        const title = this.getQuestionTitle(question) || '未命名题目';
+        const type = this.getQuestionType(question) || '未知题型';
+        const questionId = question.id;
+        
+        // ✅ 如果没有ID，提示无法删除
+        if (!questionId) {
+            alert('❌ 该题目没有唯一ID，无法精确删除。请重新生成题目。');
+            return;
+        }
+        
+        if (!confirm(`确定要删除这道题吗？\n\n题型：${type}\n题目：${title.substring(0, 50)}...`)) {
+            return;
+        }
+
+        try {
+            // ✅ 通过ID删除
+            const response = await fetch('/api/questions/delete-bank', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ 
+                    id: questionId,
+                    question: question
+                })
+            });
+
+            const result = await response.json();
+
+            if (!result.success) {
+                alert('❌ 删除失败：' + (result.message || '未知错误'));
+                return;
+            }
+
+            // ✅ 从完整列表中移除（使用ID过滤）
+            this.questions = this.questions.filter(q => q.id !== questionId);
+            
+            // ✅ 从筛选列表中移除（使用ID过滤）
+            this.filteredQuestions = this.filteredQuestions.filter(q => q.id !== questionId);
+            
+            // 重新渲染
+            this.renderQuestions();
+            this.updateTotal();
+            this.bindCheckboxEvents();
+            this.bindDeleteEvents();
+            this.clearSelection();
+            
+            // 显示成功消息
+            this.showMessage(`✅ 删除成功，剩余 ${this.questions.length} 道题`, 'success');
+
+        } catch (e) {
+            console.error('删除失败：', e);
+            alert('❌ 删除失败：' + e.message);
+        }
+    },
+
+    // =====================================================
+    // ✅ 删除选中的多道题（修复筛选后删除问题）
+    // =====================================================
+
+    async deleteSelectedQuestions() {
+        // ✅ 从筛选后的列表中获取选中的索引
+        const selectedIndices = this.getSelectedIndices();
+        
+        if (selectedIndices.length === 0) {
+            alert('请先选择要删除的题目！');
+            return;
+        }
+
+        // ✅ 从 filteredQuestions 中获取选中的题目（而不是 questions）
+        const selectedQuestions = selectedIndices
+            .map(i => this.filteredQuestions[i])
+            .filter(q => q && q.id);
+        
+        if (selectedQuestions.length === 0) {
+            alert('❌ 选中的题目没有唯一ID，无法删除。请重新生成题目。');
+            return;
+        }
+
+        const titles = selectedQuestions
+            .map((q, idx) => {
+                const title = this.getQuestionTitle(q) || '未命名';
+                const type = this.getQuestionType(q) || '未知';
+                return `${idx + 1}. [${type}] ${title.substring(0, 30)}...`;
+            })
+            .join('\n');
+
+        if (!confirm(`⚠️ 确定要删除选中的 ${selectedQuestions.length} 道题吗？\n\n${titles}`)) {
+            return;
+        }
+
+        const deleteBtn = document.getElementById('delete-selected-btn');
+        if (deleteBtn) {
+            deleteBtn.disabled = true;
+            deleteBtn.textContent = '⏳ 删除中...';
+        }
+
+        try {
+            let deletedCount = 0;
+            let failedList = [];
+            const deletedIds = new Set();
+
+            for (const q of selectedQuestions) {
+                const response = await fetch('/api/questions/delete-bank', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        id: q.id,
+                        question: q
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    deletedCount++;
+                    deletedIds.add(q.id);
+                } else {
+                    const title = this.getQuestionTitle(q) || '未命名';
+                    failedList.push(`题目：${title.substring(0, 20)}...`);
+                }
+            }
+
+            // ✅ 从完整列表中移除（使用ID过滤）
+            this.questions = this.questions.filter(q => !deletedIds.has(q.id));
+            
+            // ✅ 从筛选列表中移除（使用ID过滤）
+            this.filteredQuestions = this.filteredQuestions.filter(q => !deletedIds.has(q.id));
+            
+            this.renderQuestions();
+            this.updateTotal();
+            this.bindCheckboxEvents();
+            this.bindDeleteEvents();
+            this.clearSelection();
+            
+            if (failedList.length === 0) {
+                this.showMessage(`✅ 成功删除 ${deletedCount} 道题，剩余 ${this.questions.length} 道`, 'success');
+            } else {
+                const msg = `⚠️ 部分删除成功：${deletedCount}/${selectedQuestions.length} 道\n\n失败：\n${failedList.join('\n')}`;
+                this.showMessage(msg, 'warning');
+            }
+
+        } catch (e) {
+            console.error('批量删除失败：', e);
+            alert('❌ 删除失败：' + e.message);
+        } finally {
+            if (deleteBtn) {
+                deleteBtn.disabled = false;
+                deleteBtn.textContent = '🗑 删除选中 (0)';
+            }
+        }
+    },
+
+    // =====================================================
+    // 获取选中的索引
+    // =====================================================
+
+    getSelectedIndices() {
+        const checkboxes = document.querySelectorAll('#question-list .row-checkbox:checked');
+        const indices = [];
+        checkboxes.forEach(cb => {
+            const idx = parseInt(cb.dataset.index);
+            if (!isNaN(idx)) {
+                indices.push(idx);
+            }
+        });
+        return indices;
+    },
+
+    // =====================================================
+    // 清除所有选中
+    // =====================================================
+
+    clearSelection() {
+        document.querySelectorAll('#question-list .row-checkbox').forEach(cb => {
+            cb.checked = false;
+            cb.closest('tr')?.classList.remove('selected');
+        });
+        const selectAll = document.getElementById('select-all');
+        if (selectAll) selectAll.checked = false;
+        this.updateSelectedCount();
+        this.updateSelectAllState();
+    },
+
+    // =====================================================
+    // 显示消息
+    // =====================================================
+
+    showMessage(msg, type = 'info') {
+        const oldMsg = document.getElementById('bank-message');
+        if (oldMsg) oldMsg.remove();
+
+        const messageEl = document.createElement('div');
+        messageEl.id = 'bank-message';
+        messageEl.style.cssText = `
+            padding: 12px 20px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+            animation: slideDown 0.3s ease;
+        `;
+
+        const colors = {
+            success: { bg: '#dcfce7', color: '#166534', border: '#86efac' },
+            error: { bg: '#fee2e2', color: '#991b1b', border: '#fca5a5' },
+            warning: { bg: '#fef3c7', color: '#92400e', border: '#fcd34d' },
+            info: { bg: '#dbeafe', color: '#1e40af', border: '#93c5fd' }
+        };
+
+        const style = colors[type] || colors.info;
+        messageEl.style.background = style.bg;
+        messageEl.style.color = style.color;
+        messageEl.style.border = `1px solid ${style.border}`;
+        messageEl.textContent = msg;
+
+        const container = document.querySelector('.question-filter-card');
+        if (container) {
+            container.parentNode.insertBefore(messageEl, container);
+        } else {
+            const tableCard = document.querySelector('.question-table-card');
+            if (tableCard) {
+                tableCard.parentNode.insertBefore(messageEl, tableCard);
+            }
+        }
+
+        clearTimeout(this._messageTimer);
+        this._messageTimer = setTimeout(() => {
+            messageEl.style.animation = 'slideUp 0.3s ease forwards';
+            setTimeout(() => messageEl.remove(), 300);
+        }, 5000);
     },
 
     // =====================================================
@@ -287,6 +604,7 @@ const QuestionBank = {
     bindCheckboxEvents() {
         const selectAll = document.getElementById('select-all');
         if (selectAll) {
+            selectAll.onchange = null;
             selectAll.onchange = () => {
                 const checked = selectAll.checked;
                 document.querySelectorAll('.row-checkbox').forEach(cb => {
@@ -294,10 +612,12 @@ const QuestionBank = {
                     cb.closest('tr')?.classList.toggle('selected', checked);
                 });
                 this.updateSelectedCount();
+                this.updateSelectAllState();
             };
         }
 
         document.querySelectorAll('.row-checkbox').forEach(cb => {
+            cb.onchange = null;
             cb.onchange = () => {
                 cb.closest('tr')?.classList.toggle('selected', cb.checked);
                 this.updateSelectedCount();
@@ -313,13 +633,22 @@ const QuestionBank = {
         const count = document.querySelectorAll('.row-checkbox:checked').length;
         const selectedCount = document.getElementById('selected-count');
         const importCount = document.getElementById('import-count');
+        const deleteCount = document.getElementById('delete-count');
         const importBtn = document.getElementById('import-selected-btn');
+        const deleteBtn = document.getElementById('delete-selected-btn');
 
         if (selectedCount) selectedCount.textContent = count;
         if (importCount) importCount.textContent = count;
+        if (deleteCount) deleteCount.textContent = count;
+        
         if (importBtn) {
             importBtn.disabled = count === 0;
             importBtn.innerHTML = `⬆ 导入选中 (${count})`;
+        }
+        
+        if (deleteBtn) {
+            deleteBtn.disabled = count === 0;
+            deleteBtn.innerHTML = `🗑 删除选中 (${count})`;
         }
     },
 
@@ -345,12 +674,12 @@ const QuestionBank = {
 
     getSelectedQuestions() {
         const ids = new Set();
-        document.querySelectorAll('.row-checkbox:checked').forEach(cb => ids.add(cb.dataset.id));
-
-        return this.filteredQuestions.filter((q, i) => {
-            const id = String(q.id ?? i);
-            return ids.has(id);
+        document.querySelectorAll('.row-checkbox:checked').forEach(cb => {
+            const id = cb.dataset.id;
+            if (id) ids.add(id);
         });
+
+        return this.filteredQuestions.filter(q => ids.has(q.id));
     },
 
     // =====================================================
@@ -413,7 +742,6 @@ const QuestionBank = {
             if (result.success) {
                 const inserted = result.data?.inserted ?? questions.length;
                 alert(`✅ 导入成功！\n共处理 ${questions.length} 道\n成功导入 ${inserted} 道`);
-                // 清空选中
                 document.querySelectorAll('.row-checkbox:checked').forEach(cb => {
                     cb.checked = false;
                     cb.closest('tr')?.classList.remove('selected');

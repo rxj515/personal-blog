@@ -33,6 +33,9 @@
             <button id="export-btn" class="btn-primary" type="button">
                 ↓ 导出 Excel
             </button>
+            <button id="delete-selected-btn" class="btn-danger" type="button" disabled>
+                🗑 删除选中 (<span id="delete-count">0</span>)
+            </button>
         </div>
 
         <!-- 搜索题目 -->
@@ -80,11 +83,12 @@
                         <th class="col-option">F</th>
                         <th class="col-answer">答案</th>
                         <th class="col-analysis">解析</th>
+                        <th class="col-delete">操作</th>
                     </tr>
                 </thead>
                 <tbody id="question-list">
                     <tr>
-                        <td colspan="12" class="empty-cell">正在加载题库...</td>
+                        <td colspan="13" class="empty-cell">正在加载题库...</td>
                     </tr>
                 </tbody>
             </table>

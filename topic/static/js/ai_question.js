@@ -22,6 +22,12 @@ const AIQuestion = {
 
 
     // =====================================================
+    // 删除事件处理器引用（用于移除监听器）
+    // =====================================================
+    _deleteHandler: null,
+
+
+    // =====================================================
     // 初始化
     // =====================================================
     async init() {
@@ -41,6 +47,9 @@ const AIQuestion = {
 
         // 绑定按钮
         this.bindEvent();
+
+        // ✅ 新增：绑定删除事件（独立）
+        this.bindDeleteEvents();
 
         // ✅ 监听 AI 配置变化事件
         document.removeEventListener(
@@ -92,7 +101,7 @@ const AIQuestion = {
                         // 存储完整路径
                         const fullPath = parentName ? `${parentName} / ${node.name}` : node.name;
                         option.dataset.fullName = fullPath;
-                        option.dataset.superiorName = node.superiorName || '';   // ★★★ 新增 ★★★
+                        option.dataset.superiorName = node.superiorName || '';
                         option.dataset.subjectionId = node.subjectionId || '';
                         option.dataset.subjectionName = node.subjectionName || '';
     
@@ -541,7 +550,6 @@ const AIQuestion = {
                 "generate-btn"
             );
 
-
         if (btn) {
 
             btn.onclick = () => {
@@ -567,7 +575,6 @@ const AIQuestion = {
                 "export-btn"
             );
 
-
         if (exportBtn) {
 
             exportBtn.onclick = () => {
@@ -582,6 +589,248 @@ const AIQuestion = {
             console.error(
                 "没有找到Excel导出按钮"
             );
+        }
+
+    },
+
+
+    // =====================================================
+    // ✅ 新增：绑定删除事件（独立方法，防止重复绑定）
+    // =====================================================
+    bindDeleteEvents() {
+
+        const tbody =
+            document.getElementById(
+                "question-table-body"
+            );
+
+        if (!tbody) {
+            return;
+        }
+
+        // 移除旧监听器
+        if (this._deleteHandler) {
+            tbody.removeEventListener(
+                "click",
+                this._deleteHandler
+            );
+            this._deleteHandler = null;
+        }
+
+        // 创建新监听器
+        this._deleteHandler = (e) => {
+            const deleteBtn =
+                e.target.closest(".btn-delete-row");
+
+            if (deleteBtn) {
+                const row =
+                    deleteBtn.closest("tr");
+
+                if (row) {
+                    // ✅ 获取存储的ID
+                    const questionId =
+                        row.dataset.id;
+
+                    if (questionId) {
+                        // 阻止事件冒泡
+                        e.stopPropagation();
+                        // ✅ 通过ID删除
+                        this.deleteQuestionById(questionId);
+                    } else {
+                        // 兼容旧数据：如果没有ID，使用索引
+                        const index =
+                            parseInt(
+                                row.dataset.index
+                            );
+                        if (!isNaN(index)) {
+                            e.stopPropagation();
+                            this.deleteQuestion(index);
+                        }
+                    }
+                }
+            }
+        };
+
+        tbody.addEventListener(
+            "click",
+            this._deleteHandler
+        );
+    },
+
+
+    // =====================================================
+    // ✅ 删除单道题（通过ID）
+    // =====================================================
+    async deleteQuestionById(questionId) {
+
+        if (
+            !Array.isArray(this.currentQuestions) ||
+            this.currentQuestions.length === 0
+        ) {
+            return;
+        }
+
+        // 查找题目
+        const question = this.currentQuestions.find(q => q.id === questionId);
+        if (!question) {
+            console.warn("删除失败：未找到ID为", questionId, "的题目");
+            return;
+        }
+
+        const title = question.title || question.subjects || '未命名题目';
+        const type = question.title_category_name || '未知题型';
+        
+        if (
+            !confirm(
+                "确定要删除这道题吗？\n\n题型：" + type + "\n题目：" + title.substring(0, 50) + "..."
+            )
+        ) {
+            return;
+        }
+
+        // =================================================
+        // ✅ 调用后端接口删除（通过ID）
+        // =================================================
+        try {
+            const response = await fetch(
+                "/api/questions/delete-new",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ id: questionId })
+                }
+            );
+
+            const result = await response.json();
+
+            if (!result.success) {
+                alert("删除失败：" + (result.message || "未知错误"));
+                return;
+            }
+
+            // =================================================
+            // 从数组中移除（通过ID过滤）
+            // =================================================
+            this.currentQuestions = this.currentQuestions.filter(q => q.id !== questionId);
+
+            // 重新渲染
+            this.render(this.currentQuestions);
+
+            // 更新消息
+            const message =
+                document.getElementById(
+                    "generate-message"
+                );
+
+            if (message) {
+                message.textContent =
+                    "✅ 已删除，剩余 " +
+                    this.currentQuestions.length +
+                    " 道题";
+            }
+
+            console.log(
+                "已删除ID：",
+                questionId,
+                "剩余",
+                this.currentQuestions.length,
+                "道"
+            );
+
+        } catch (e) {
+            console.error("删除失败：", e);
+            alert("删除失败：" + e.message);
+        }
+    },
+
+
+    // =====================================================
+    // ✅ 删除单道题（通过索引，兼容旧数据）
+    // =====================================================
+    async deleteQuestion(index) {
+
+        if (
+            !Array.isArray(this.currentQuestions) ||
+            this.currentQuestions.length === 0
+        ) {
+            return;
+        }
+
+        if (
+            index < 0 ||
+            index >= this.currentQuestions.length
+        ) {
+            console.warn("删除失败：索引超出范围", index);
+            return;
+        }
+
+        const question = this.currentQuestions[index];
+        const title = question.title || question.subjects || '未命名题目';
+        const type = question.title_category_name || '未知题型';
+        
+        // 如果题目有ID，用ID删除
+        if (question.id) {
+            await this.deleteQuestionById(question.id);
+            return;
+        }
+
+        if (
+            !confirm(
+                "确定要删除第 " +
+                (index + 1) +
+                " 道题吗？\n\n题型：" + type + "\n题目：" + title.substring(0, 50) + "..."
+            )
+        ) {
+            return;
+        }
+
+        try {
+            const response = await fetch(
+                "/api/questions/delete-new",
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ index: index })
+                }
+            );
+
+            const result = await response.json();
+
+            if (!result.success) {
+                alert("删除失败：" + (result.message || "未知错误"));
+                return;
+            }
+
+            this.currentQuestions.splice(index, 1);
+            this.render(this.currentQuestions);
+
+            const message =
+                document.getElementById(
+                    "generate-message"
+                );
+
+            if (message) {
+                message.textContent =
+                    "✅ 已删除，剩余 " +
+                    this.currentQuestions.length +
+                    " 道题";
+            }
+
+            console.log(
+                "已删除第",
+                index + 1,
+                "道题，剩余",
+                this.currentQuestions.length,
+                "道"
+            );
+
+        } catch (e) {
+            console.error("删除失败：", e);
+            alert("删除失败：" + e.message);
         }
     },
 
@@ -699,7 +948,7 @@ const AIQuestion = {
         const deptInfo = {
             id: selectedOption ? selectedOption.value : "",
             fullName: selectedOption ? (selectedOption.dataset.fullName || "") : "",
-            superiorName: selectedOption ? (selectedOption.dataset.superiorName || "") : "",   // ★★★ 新增 ★★★
+            superiorName: selectedOption ? (selectedOption.dataset.superiorName || "") : "",
             subjectionId: selectedOption ? (selectedOption.dataset.subjectionId || "") : "",
             subjectionName: selectedOption ? (selectedOption.dataset.subjectionName || "") : ""
         };
@@ -832,7 +1081,7 @@ const AIQuestion = {
                         body: JSON.stringify({
                             question_type: questionType,
                             count: count,
-                            dept: deptInfo  // ✅ 新增：把分类信息传过去
+                            dept: deptInfo
                         })
                     }
                 );
@@ -1174,7 +1423,7 @@ const AIQuestion = {
 
 
     // =====================================================
-    // 渲染题目
+    // ✅ 渲染题目（已加入删除按钮，并在渲染后重新绑定删除事件）
     // =====================================================
     render(list) {
 
@@ -1202,7 +1451,7 @@ const AIQuestion = {
 
                 <tr>
                     <td
-                        colspan="10"
+                        colspan="11"
                         style="
                             text-align:center;
                             padding:40px;
@@ -1215,6 +1464,8 @@ const AIQuestion = {
 
             `;
 
+            // 重新绑定删除事件
+            this.bindDeleteEvents();
             return;
         }
 
@@ -1229,6 +1480,10 @@ const AIQuestion = {
 
             const tr =
                 document.createElement("tr");
+
+            // 存储索引和ID到 data 属性，方便删除
+            tr.dataset.index = index;
+            tr.dataset.id = item.id || '';  // ✅ 存储ID
 
             tr.innerHTML = `
 
@@ -1246,6 +1501,16 @@ const AIQuestion = {
                 <td>${item.plan_f || ""}</td>
                 <td>${item.answer || ""}</td>
                 <td>${item.analysis || ""}</td>
+                <td>
+                    <button 
+                        class="btn-delete-row" 
+                        data-index="${index}"
+                        data-id="${item.id || ''}"
+                        title="删除此题"
+                    >
+                        删除
+                    </button>
+                </td>
 
             `;
 
@@ -1256,6 +1521,11 @@ const AIQuestion = {
         // 替换整个 tbody 内容
         tbody.innerHTML = "";
         tbody.appendChild(fragment);
+
+        // =================================================
+        // ✅ 重新绑定删除事件
+        // =================================================
+        this.bindDeleteEvents();
 
     },
 

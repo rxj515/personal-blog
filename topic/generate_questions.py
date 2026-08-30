@@ -27,6 +27,7 @@
 import json
 import random
 import re
+import uuid  # ✅ 新增：导入uuid
 from pathlib import Path
 
 import ai_client
@@ -445,7 +446,7 @@ def clean_ai_json(text):
 
 
 # ============================================================
-# 13. 验证题目
+# 13. 验证题目（✅ 已添加ID生成）
 # ============================================================
 
 def validate_question(
@@ -864,6 +865,10 @@ def validate_question(
     # --------------------------------------------------------
 
     question["article"] = article
+
+    # ✅ 新增：生成唯一ID
+    if "id" not in question:
+        question["id"] = str(uuid.uuid4())
 
     return question
 
@@ -1746,6 +1751,11 @@ def main(
         print(
             f"解析："
             f"{question['analysis']}"
+        )
+
+        print(
+            f"ID："
+            f"{question.get('id', '无ID')}"
         )
 
         print(

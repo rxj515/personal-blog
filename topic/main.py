@@ -2626,3 +2626,427 @@ def tag_articles_api():
             "success": False,
             "message": f"打标签失败：{e}"
         }
+
+# ============================================================
+# 36. 删除新题（通过ID精确删除，同时从历史题库中移除）
+#
+# POST /api/questions/delete-new
+#
+# ============================================================
+
+@app.post("/api/questions/delete-new")
+def delete_new_question(
+    data: dict = Body(...)
+):
+    """
+    从 _new.json 和历史题库中删除指定ID的题目
+    
+    请求体：
+    {
+        "id": "uuid-xxx-xxx"  // 题目的唯一ID
+    }
+    """
+    try:
+
+        print()
+        print("=" * 60)
+        print("删除新题（通过ID精确删除，同时从历史题库移除）")
+        print("=" * 60)
+
+        # ----------------------------------------------------
+        # 参数检查
+        # ----------------------------------------------------
+        if not isinstance(data, dict):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "参数必须是对象"
+                }
+            )
+
+        question_id = data.get("id")
+        
+        if not question_id:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "缺少 id 参数"
+                }
+            )
+
+        print(f"📌 要删除的题目ID：{question_id}")
+
+        # ----------------------------------------------------
+        # 1. 查找 _new.json 文件
+        # ----------------------------------------------------
+        json_files = list(
+            QUESTIONS_DIR.glob("*_new.json")
+        )
+
+        if not json_files:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "message": "没有找到 _new.json 文件"
+                }
+            )
+
+        json_files.sort(
+            key=lambda x: x.stat().st_mtime,
+            reverse=True
+        )
+
+        new_file = json_files[0]
+
+        print(f"📄 _new.json 文件：{new_file.name}")
+
+        # ----------------------------------------------------
+        # 2. 读取 _new.json 数据
+        # ----------------------------------------------------
+        new_questions = read_json_file(new_file)
+
+        if new_questions is None:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": "读取 _new.json 失败"
+                }
+            )
+
+        if not isinstance(new_questions, list):
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": "_new.json 格式不是数组"
+                }
+            )
+
+        print(f"📌 _new.json 当前有 {len(new_questions)} 道题")
+
+        # ----------------------------------------------------
+        # 3. 通过ID查找要删除的题目
+        # ----------------------------------------------------
+        deleted_question = None
+        deleted_index = -1
+        
+        for i, q in enumerate(new_questions):
+            if q.get("id") == question_id:
+                deleted_question = q
+                deleted_index = i
+                break
+
+        if deleted_question is None:
+            print(f"⚠️ 在 _new.json 中未找到ID为 {question_id} 的题目")
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "message": f"未找到ID为 {question_id} 的题目"
+                }
+            )
+
+        print(f"🗑️ 要删除的题目：")
+        print(f"   ID：{question_id}")
+        print(f"   文章：{deleted_question.get('article', '')}")
+        print(f"   题型：{deleted_question.get('title_category_name', '')}")
+        print(f"   题目：{deleted_question.get('title', '')[:30]}...")
+
+        # ----------------------------------------------------
+        # 4. 从 _new.json 中删除
+        # ----------------------------------------------------
+        new_questions.pop(deleted_index)
+
+        try:
+            with open(new_file, "w", encoding="utf-8") as f:
+                json.dump(new_questions, f, ensure_ascii=False, indent=2)
+            print(f"✅ 已从 _new.json 删除，剩余 {len(new_questions)} 道")
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": f"保存 _new.json 失败：{e}"
+                }
+            )
+
+        # ----------------------------------------------------
+        # 5. 从历史题库中删除（只用ID匹配）
+        # ----------------------------------------------------
+        history_file = find_question_file()
+        
+        if history_file is None:
+            print("⚠️ 没有找到历史题库文件")
+        else:
+            print(f"📄 历史题库文件：{history_file.name}")
+            
+            history_questions = read_json_file(history_file)
+            
+            if history_questions is not None and isinstance(history_questions, list):
+                
+                original_count = len(history_questions)
+                deleted_from_history = False
+                
+                # ✅ 只通过ID匹配
+                for i, q in enumerate(history_questions):
+                    if q.get("id") == question_id:
+                        removed = history_questions.pop(i)
+                        deleted_from_history = True
+                        print(f"✅ 已从历史题库删除（ID匹配）：{removed.get('title', '')[:30]}...")
+                        break
+                
+                if deleted_from_history:
+                    try:
+                        with open(history_file, "w", encoding="utf-8") as f:
+                            json.dump(history_questions, f, ensure_ascii=False, indent=2)
+                        print(f"✅ 历史题库更新完成，删除前 {original_count} 道，删除后 {len(history_questions)} 道")
+                    except Exception as e:
+                        print(f"❌ 保存历史题库失败：{e}")
+                        return JSONResponse(
+                            status_code=500,
+                            content={
+                                "success": False,
+                                "message": f"保存历史题库失败：{e}"
+                            }
+                        )
+                else:
+                    print("ℹ️ 历史题库中没有找到相同ID的题目，跳过")
+            else:
+                print("⚠️ 无法读取历史题库")
+
+        print("=" * 60)
+        print()
+
+        return {
+            "success": True,
+            "message": f"删除成功，_new.json 剩余 {len(new_questions)} 道题",
+            "data": {
+                "remaining": len(new_questions),
+                "deleted": deleted_question
+            }
+        }
+
+    except Exception as e:
+
+        print()
+        print("=" * 60)
+        print("删除新题失败")
+        print("=" * 60)
+        print(e)
+        print()
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"删除失败：{e}"
+            }
+        )
+        
+ # ============================================================
+# 37. 从题库中删除题目（通过ID精确删除，同步删除 _new.json 和历史题库）
+#
+# POST /api/questions/delete-bank
+#
+# ============================================================
+
+@app.post("/api/questions/delete-bank")
+def delete_bank_question(
+    data: dict = Body(...)
+):
+    """
+    通过题目ID精确删除
+    同时从 _new.json 和历史题库中删除
+    
+    请求体：
+    {
+        "id": "uuid",         // ✅ 题目的唯一ID
+        "question": {...}     // 完整的题目对象（备用）
+    }
+    """
+    try:
+
+        print()
+        print("=" * 80)
+        print("🗑️ 通过ID精确删除题目")
+        print("=" * 80)
+
+        # ----------------------------------------------------
+        # 参数检查
+        # ----------------------------------------------------
+        if not isinstance(data, dict):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "参数必须是对象"
+                }
+            )
+
+        # ✅ 优先使用 id
+        question_id = data.get("id")
+        question = data.get("question")
+
+        # 如果没有 id，从 question 中取
+        if not question_id and question and isinstance(question, dict):
+            question_id = question.get("id")
+
+        if not question_id:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "缺少 id 参数，无法精确删除"
+                }
+            )
+
+        print(f"📌 要删除的题目ID：{question_id}")
+        print("=" * 80)
+
+        total_deleted = 0
+        deleted_from = []
+
+        # ====================================================
+        # 第一步：从 _new.json 中删除
+        # ====================================================
+        new_files = list(QUESTIONS_DIR.glob("*_new.json"))
+        
+        if new_files:
+            new_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            
+            for new_file in new_files:
+                print(f"📄 处理 _new.json：{new_file.name}")
+                
+                try:
+                    with open(new_file, "r", encoding="utf-8") as f:
+                        new_questions = json.load(f)
+                except Exception as e:
+                    print(f"   ❌ 读取失败：{e}")
+                    continue
+                
+                if not isinstance(new_questions, list):
+                    new_questions = []
+                
+                original_count = len(new_questions)
+                print(f"   _new.json 当前有 {original_count} 道题")
+                
+                # ✅ 通过ID查找并删除
+                deleted = False
+                for i, q in enumerate(new_questions):
+                    if q.get("id") == question_id:
+                        removed = new_questions.pop(i)
+                        deleted = True
+                        total_deleted += 1
+                        deleted_from.append("_new.json")
+                        print(f"   ✅ 从 _new.json 删除：{removed.get('title', '')[:30]}...")
+                        break
+                
+                if deleted:
+                    try:
+                        with open(new_file, "w", encoding="utf-8") as f:
+                            json.dump(new_questions, f, ensure_ascii=False, indent=2)
+                        print(f"   ✅ _new.json 保存成功，剩余 {len(new_questions)} 道")
+                    except Exception as e:
+                        print(f"   ❌ 保存失败：{e}")
+                else:
+                    print(f"   ⚠️ 在 _new.json 中未找到ID为 {question_id} 的题目")
+        else:
+            print("ℹ️ 没有找到 _new.json 文件")
+
+        # ====================================================
+        # 第二步：从历史题库中删除
+        # ====================================================
+        history_file = find_question_file()
+        
+        if history_file:
+            print()
+            print(f"📄 处理历史题库：{history_file.name}")
+            
+            try:
+                with open(history_file, "r", encoding="utf-8") as f:
+                    history_questions = json.load(f)
+            except Exception as e:
+                print(f"   ❌ 读取失败：{e}")
+                history_questions = []
+            
+            if not isinstance(history_questions, list):
+                history_questions = []
+            
+            original_count = len(history_questions)
+            print(f"   历史题库当前有 {original_count} 道题")
+            
+            # ✅ 通过ID查找并删除
+            deleted = False
+            for i, q in enumerate(history_questions):
+                if q.get("id") == question_id:
+                    removed = history_questions.pop(i)
+                    deleted = True
+                    total_deleted += 1
+                    deleted_from.append("history")
+                    print(f"   ✅ 从历史题库删除：{removed.get('title', '')[:30]}...")
+                    break
+            
+            if deleted:
+                try:
+                    with open(history_file, "w", encoding="utf-8") as f:
+                        json.dump(history_questions, f, ensure_ascii=False, indent=2)
+                    print(f"   ✅ 历史题库保存成功，剩余 {len(history_questions)} 道")
+                except Exception as e:
+                    print(f"   ❌ 保存失败：{e}")
+                    return JSONResponse(
+                        status_code=500,
+                        content={
+                            "success": False,
+                            "message": f"保存历史题库失败：{e}"
+                        }
+                    )
+            else:
+                print(f"   ⚠️ 在历史题库中未找到ID为 {question_id} 的题目")
+        else:
+            print("ℹ️ 没有找到历史题库文件")
+
+        # ====================================================
+        # 返回结果
+        # ====================================================
+        print()
+        print("=" * 80)
+        if total_deleted > 0:
+            print(f"✅ 删除成功，共删除 {total_deleted} 道题")
+            print(f"   删除来源：{', '.join(set(deleted_from))}")
+        else:
+            print(f"⚠️ 未找到ID为 {question_id} 的题目")
+        print("=" * 80)
+        print()
+
+        return {
+            "success": True,
+            "message": f"删除完成，共删除 {total_deleted} 道题",
+            "data": {
+                "deleted_count": total_deleted,
+                "deleted_from": list(set(deleted_from))
+            }
+        }
+
+    except Exception as e:
+
+        print()
+        print("=" * 80)
+        print("❌ 删除题目失败")
+        print("=" * 80)
+        print(f"异常类型：{type(e).__name__}")
+        print(f"异常信息：{e}")
+        import traceback
+        traceback.print_exc()
+        print("=" * 80)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"删除失败：{str(e)}"
+            }
+        )

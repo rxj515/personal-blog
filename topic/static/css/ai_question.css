@@ -436,7 +436,7 @@
 .question-table {
     width: 100%;
 
-    min-width: 1150px;
+    min-width: 1250px;  /* 从1150px增加到1250px，为删除列腾出空间 */
 
     table-layout: fixed;
 
@@ -445,31 +445,32 @@
 
 
 /* =====================================================
-   表格列宽
+   表格列宽（新增删除列）
 ===================================================== */
 
 .col-index {
     width: 50px;
 }
 
-
 .col-question {
-    width: 28%;
+    width: 24%;  /* 从28%调整为24% */
 }
-
 
 .col-option {
-    width: 7%;
+    width: 6%;   /* 从7%调整为6% */
 }
-
 
 .col-answer {
-    width: 65px;
+    width: 60px;  /* 从65px调整为60px */
 }
-
 
 .col-analysis {
     width: auto;
+}
+
+.col-delete {    /* 新增删除列 */
+    width: 70px;
+    min-width: 70px;
 }
 
 
@@ -489,6 +490,9 @@
     font-weight: 600;
 
     border-bottom: 1px solid #e5e7eb;
+
+    text-align: center;      /* 新增：表头居中 */
+    vertical-align: middle;  /* 新增：表头垂直居中 */
 }
 
 
@@ -538,6 +542,35 @@
 
 
 /* =====================================================
+   删除按钮样式
+===================================================== */
+
+.btn-delete-row {
+    padding: 4px 12px;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fef2f2;
+    color: #dc2626;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+}
+
+.btn-delete-row:hover {
+    background: #dc2626;
+    color: #ffffff;
+    border-color: #dc2626;
+    transform: scale(1.05);
+}
+
+.btn-delete-row:active {
+    transform: scale(0.95);
+}
+
+
+/* =====================================================
    滚动条
 ===================================================== */
 
@@ -547,13 +580,11 @@
     height: 7px;
 }
 
-
 .question-result::-webkit-scrollbar-thumb {
     background: #cbd5e1;
 
     border-radius: 10px;
 }
-
 
 .question-result::-webkit-scrollbar-track {
     background: transparent;
@@ -570,6 +601,23 @@
         grid-template-columns: 1fr 1fr;
     }
 
+    /* 小屏幕下表格列宽调整 */
+    .question-table {
+        min-width: 1100px;
+    }
+
+    .col-question {
+        width: 20%;
+    }
+
+    .col-option {
+        width: 5%;
+    }
+
+    .col-delete {
+        width: 60px;
+        min-width: 60px;
+    }
 }
 
 
@@ -583,21 +631,17 @@
         grid-template-columns: 1fr;
     }
 
-
     .config-card .card-title {
         grid-column: 1;
     }
-
 
     .operation-message {
         grid-column: 1;
     }
 
-
     .ai-question-page h1 {
         font-size: 24px;
     }
-
 
     .config-card,
     .result-card {
@@ -606,4 +650,26 @@
         border-radius: 18px;
     }
 
+    /* 小屏幕下表格列宽进一步调整 */
+    .question-table {
+        min-width: 900px;
+    }
+
+    .col-question {
+        width: 18%;
+    }
+
+    .col-option {
+        width: 4%;
+    }
+
+    .col-delete {
+        width: 55px;
+        min-width: 55px;
+    }
+
+    .btn-delete-row {
+        padding: 3px 8px;
+        font-size: 11px;
+    }
 }
