@@ -1,0 +1,6 @@
+# 在 topic 文件夹里也创建 .gitignore
+cd /d D:\personal-blog\topic
+type nul > .gitignore
+echo "__pycache__/" >> .gitignore
+echo "*.pyc" >> .gitignore
+echo "*.pyo" >> .gitignore

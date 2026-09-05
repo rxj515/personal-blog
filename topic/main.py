@@ -25,6 +25,7 @@
 
 import sys
 import json
+import os
 from pathlib import Path
 import asyncio
 
@@ -250,12 +251,19 @@ def page_exists(page_name: str):
 # 12. 首页
 # ============================================================
 
+# @app.get("/")
+# def index(request: Request):
+
+#     return templates.TemplateResponse(
+#         request=request,
+#         name="index.html"
+#     )
+
 @app.get("/")
 def index(request: Request):
-
     return templates.TemplateResponse(
-        request=request,
-        name="index.html"
+        "index.html",
+        {"request": request}
     )
 
 
@@ -266,9 +274,9 @@ def index(request: Request):
 @app.get("/dashboard")
 def dashboard(request: Request):
 
-    return templates.TemplateResponse(
-        request=request,
-        name="pages/dashboard.html"
+        return templates.TemplateResponse(
+        "pages/dashboard.html",
+        {"request": request}
     )
 
 
@@ -279,9 +287,9 @@ def dashboard(request: Request):
 @app.get("/knowledge")
 def knowledge(request: Request):
 
-    return templates.TemplateResponse(
-        request=request,
-        name="pages/knowledge.html"
+        return templates.TemplateResponse(
+        "pages/knowledge.html",
+        {"request": request}
     )
 
 
@@ -292,9 +300,9 @@ def knowledge(request: Request):
 @app.get("/ai-question")
 def ai_question(request: Request):
 
-    return templates.TemplateResponse(
-        request=request,
-        name="pages/ai_question.html"
+        return templates.TemplateResponse(
+            "pages/ai_question.html",
+            {"request": request}
     )
 
 
@@ -305,9 +313,9 @@ def ai_question(request: Request):
 @app.get("/question-bank")
 def question_bank(request: Request):
 
-    return templates.TemplateResponse(
-        request=request,
-        name="pages/question_bank.html"
+        return templates.TemplateResponse(
+        "pages/question_bank.html",
+        {"request": request}
     )
 
 
@@ -318,9 +326,9 @@ def question_bank(request: Request):
 @app.get("/system")
 def system(request: Request):
 
-    return templates.TemplateResponse(
-        request=request,
-        name="pages/system.html"
+        return templates.TemplateResponse(
+            "pages/system.html",
+            {"request": request}
     )
 
 
@@ -2174,6 +2182,240 @@ def import_questions_to_db(
 
 
 
+# # ============================================================
+# # 获取题库分类列表（从 Java 后端获取）
+# #
+# # GET /api/dept/list
+# #
+# # ============================================================
+
+# @app.get("/api/dept/list")
+# def get_dept_list():
+#     """
+#     从 Java 后端获取题库分类列表（包含层级结构）
+#     """
+#     try:
+#         import requests
+        
+#         # ✅ 走网关，端口固定 1100
+#         # java_api_url = "http://localhost:1100/deptBankType/getExcelTypeSelectPy"
+
+#         # 从环境变量读取Java后端地址，支持Docker容器间通信
+#         java_host = os.environ.get('JAVA_HOST', 'localhost')
+#         java_port = os.environ.get('JAVA_PORT', '1100')
+#         java_api_url = f"http://{java_host}:{java_port}/deptBankType/getExcelTypeSelectPy"
+
+        
+#         # 后端加了 @SaIgnore 后，不需要 token 了
+#         response = requests.get(
+#             java_api_url,
+#             timeout=10,
+#             headers={"Content-Type": "application/json"}
+#         )
+        
+#         if response.status_code == 200:
+#             # 后端直接返回数组，不是包一层对象
+#             data = response.json()
+            
+#             # 兼容处理：如果是字典且有 data 字段，取 data；如果是数组，直接用
+#             if isinstance(data, dict):
+#                 items = data.get("data", [])
+#             else:
+#                 items = data
+            
+#             # 构建树形结构
+#             dept_list = []
+#             dept_map = {}
+            
+#             # 先全部转换为字典
+#             for item in items:
+#                 dept_id = item.get("id")
+                
+#                 # ✅ 修复：parentId 可能是 "0" 或 null，需要统一处理
+#                 parent_id = item.get("parentId") or ""
+#                 if parent_id == "0":
+#                     parent_id = ""
+                
+#                 dept_map[dept_id] = {
+#                     "id": dept_id,
+#                     "name": item.get("name"),
+#                     "code": item.get("code"),
+#                     "parentId": parent_id,
+#                     "superiorId": item.get("superiorId") or "",
+#                     "superiorName": item.get("superiorName"),
+#                     "subjectionId": item.get("subjectionId"),
+#                     "subjectionName": item.get("subjectionName"),
+#                     # ✅ 修复：isMine 可能是 null，需要统一为 0
+#                     "isMine": item.get("isMine") or 0,
+#                     "children": []
+#                 }
+            
+#             # 构建层级关系
+#             root_list = []
+#             for dept_id, dept in dept_map.items():
+#                 parent_id = dept["parentId"]
+#                 if parent_id and parent_id in dept_map:
+#                     dept_map[parent_id]["children"].append(dept)
+#                 else:
+#                     root_list.append(dept)
+            
+#             return {
+#                 "success": True,
+#                 "data": root_list
+#             }
+#         else:
+#             return {
+#                 "success": False,
+#                 "message": f"获取分类失败：HTTP {response.status_code}",
+#                 "data": []
+#             }
+            
+#     except requests.exceptions.ConnectionError:
+#         print("Java 后端未连接，使用本地缓存数据")
+#         return {
+#             "success": False,
+#             "message": "Java 后端未连接，使用本地缓存数据",
+#             "data": get_local_dept_list()
+#         }
+        
+#     except Exception as e:
+#         print(f"获取分类异常：{e}")
+#         return {
+#             "success": False,
+#             "message": f"获取分类失败：{str(e)}",
+#             "data": get_local_dept_list()
+#         }
+
+# def get_local_dept_list():
+#     """
+#     本地分类数据（当 Java 后端不可用时使用）
+#     """
+#     return [
+#         {
+#             "id": "1",
+#             "name": "鑫隆煤业",
+#             "code": "xlmy",
+#             "parentId": "",
+#             "superiorId": "",
+#             "superiorName": "",
+#             "subjectionId": "001",
+#             "subjectionName": "鑫隆煤业",
+#             "isMine": 1,
+#             "children": [
+#                 {
+#                     "id": "101",
+#                     "name": "抽采工",
+#                     "code": "ccg",
+#                     "parentId": "1",
+#                     "superiorId": "1",
+#                     "superiorName": "鑫隆煤业",
+#                     "subjectionId": "001",
+#                     "subjectionName": "鑫隆煤业",
+#                     "isMine": 1,
+#                     "children": []
+#                 },
+#                 {
+#                     "id": "102",
+#                     "name": "泵站值班员",
+#                     "code": "bzzby",
+#                     "parentId": "1",
+#                     "superiorId": "1",
+#                     "superiorName": "鑫隆煤业",
+#                     "subjectionId": "001",
+#                     "subjectionName": "鑫隆煤业",
+#                     "isMine": 1,
+#                     "children": []
+#                 },
+#                 {
+#                     "id": "103",
+#                     "name": "观察工",
+#                     "code": "gcg",
+#                     "parentId": "1",
+#                     "superiorId": "1",
+#                     "superiorName": "鑫隆煤业",
+#                     "subjectionId": "001",
+#                     "subjectionName": "鑫隆煤业",
+#                     "isMine": 1,
+#                     "children": []
+#                 },
+#                 {
+#                     "id": "104",
+#                     "name": "探水",
+#                     "code": "ts",
+#                     "parentId": "1",
+#                     "superiorId": "1",
+#                     "superiorName": "鑫隆煤业",
+#                     "subjectionId": "001",
+#                     "subjectionName": "鑫隆煤业",
+#                     "isMine": 1,
+#                     "children": [
+#                         {
+#                             "id": "1041",
+#                             "name": "探水工",
+#                             "code": "tsg",
+#                             "parentId": "104",
+#                             "superiorId": "1",
+#                             "superiorName": "鑫隆煤业",
+#                             "subjectionId": "001",
+#                             "subjectionName": "鑫隆煤业",
+#                             "isMine": 1,
+#                             "children": []
+#                         }
+#                     ]
+#                 },
+#                 {
+#                     "id": "105",
+#                     "name": "地面机电队",
+#                     "code": "dmjdd",
+#                     "parentId": "1",
+#                     "superiorId": "1",
+#                     "superiorName": "鑫隆煤业",
+#                     "subjectionId": "001",
+#                     "subjectionName": "鑫隆煤业",
+#                     "isMine": 1,
+#                     "children": []
+#                 },
+#                 {
+#                     "id": "106",
+#                     "name": "监控信息",
+#                     "code": "jkxx",
+#                     "parentId": "1",
+#                     "superiorId": "1",
+#                     "superiorName": "鑫隆煤业",
+#                     "subjectionId": "001",
+#                     "subjectionName": "鑫隆煤业",
+#                     "isMine": 1,
+#                     "children": []
+#                 },
+#                 {
+#                     "id": "107",
+#                     "name": "安全管理人员",
+#                     "code": "aqglry",
+#                     "parentId": "1",
+#                     "superiorId": "1",
+#                     "superiorName": "鑫隆煤业",
+#                     "subjectionId": "001",
+#                     "subjectionName": "鑫隆煤业",
+#                     "isMine": 1,
+#                     "children": []
+#                 },
+#                 {
+#                     "id": "108",
+#                     "name": "通风机房",
+#                     "code": "tffj",
+#                     "parentId": "1",
+#                     "superiorId": "1",
+#                     "superiorName": "鑫隆煤业",
+#                     "subjectionId": "001",
+#                     "subjectionName": "鑫隆煤业",
+#                     "isMine": 1,
+#                     "children": []
+#                 }
+#             ]
+#         }
+#     ]
+
+
 # ============================================================
 # 获取题库分类列表（从 Java 后端获取）
 #
@@ -2189,8 +2431,12 @@ def get_dept_list():
     try:
         import requests
         
-        # ✅ 走网关，端口固定 1100
-        java_api_url = "http://localhost:1100/deptBankType/getExcelTypeSelectPy"
+        # 从环境变量读取Java后端地址，支持Docker容器间通信
+        java_host = os.environ.get('JAVA_HOST', 'localhost')
+        java_port = os.environ.get('JAVA_PORT', '1100')
+        java_api_url = f"http://{java_host}:{java_port}/deptBankType/getExcelTypeSelectPy"
+        
+        print(f"🔗 连接 Java 后端：{java_api_url}")
         
         # 后端加了 @SaIgnore 后，不需要 token 了
         response = requests.get(
@@ -2245,29 +2491,32 @@ def get_dept_list():
                 else:
                     root_list.append(dept)
             
+            print(f"✅ 成功获取分类数据：{len(root_list)} 个根节点")
             return {
                 "success": True,
                 "data": root_list
             }
         else:
+            # 后端返回错误，使用本地缓存
+            print(f"⚠️ Java 返回错误：{response.status_code}，使用本地缓存")
             return {
-                "success": False,
-                "message": f"获取分类失败：HTTP {response.status_code}",
-                "data": []
+                "success": True,
+                "message": f"获取分类失败：HTTP {response.status_code}，使用本地缓存",
+                "data": get_local_dept_list()
             }
             
     except requests.exceptions.ConnectionError:
-        print("Java 后端未连接，使用本地缓存数据")
+        print("❌ Java 后端未连接，使用本地缓存数据")
         return {
-            "success": False,
+            "success": True,
             "message": "Java 后端未连接，使用本地缓存数据",
             "data": get_local_dept_list()
         }
         
     except Exception as e:
-        print(f"获取分类异常：{e}")
+        print(f"❌ 获取分类异常：{e}")
         return {
-            "success": False,
+            "success": True,
             "message": f"获取分类失败：{str(e)}",
             "data": get_local_dept_list()
         }
@@ -2401,6 +2650,7 @@ def get_local_dept_list():
         }
     ]
 
+    
 # ============================================================
 # 33. 获取页面列表
 #
@@ -2485,6 +2735,105 @@ async def not_found_handler(
         }
     )
 
+
+# # ============================================================
+# # 35. 启动
+# # ============================================================
+
+# if __name__ == "__main__":
+
+#     print()
+#     print("=" * 60)
+#     print(
+#         "        通用法规 AI 系统"
+#     )
+#     print("=" * 60)
+#     print()
+
+#     print(
+#         "AI服务正在启动……"
+#     )
+
+#     print()
+
+#     print(
+#         "访问地址："
+#     )
+
+#     print(
+#         "http://127.0.0.1:8000"
+#     )
+
+#     print()
+
+#     print(
+#         "工作台："
+#     )
+
+#     print(
+#         "http://127.0.0.1:8000/dashboard"
+#     )
+
+#     print()
+
+#     print(
+#         "法规知识库："
+#     )
+
+#     print(
+#         "http://127.0.0.1:8000/knowledge"
+#     )
+
+#     print()
+
+#     print(
+#         "AI智能出题："
+#     )
+
+#     print(
+#         "http://127.0.0.1:8000/ai-question"
+#     )
+
+#     print()
+
+#     print(
+#         "题库管理："
+#     )
+
+#     print(
+#         "http://127.0.0.1:8000/question-bank"
+#     )
+
+#     print()
+
+#     print(
+#         "系统设置："
+#     )
+
+#     print(
+#         "http://127.0.0.1:8000/system"
+#     )
+
+#     print()
+
+#     print(
+#         "API文档："
+#     )
+
+#     print(
+#         "http://127.0.0.1:8000/docs"
+#     )
+
+#     print()
+
+#     print("=" * 60)
+#     print()
+
+#     uvicorn.run(
+#         app,
+#         host="0.0.0.0",
+#         port=8000
+#     )
 
 # ============================================================
 # 35. 启动
@@ -2579,11 +2928,34 @@ if __name__ == "__main__":
     print("=" * 60)
     print()
 
-    uvicorn.run(
-        app,
-        host="0.0.0.0",
-        port=8000
-    )
+    # ============================================================
+    # ✅ 修改这里：从环境变量读取配置
+    # ============================================================
+    import os
+    
+    # 从环境变量获取端口，默认8000
+    port = int(os.environ.get('PORT', 8000))
+    
+    # 从环境变量获取是否调试模式
+    debug_mode = os.environ.get('DEBUG', 'false').lower() == 'true'
+    
+    if debug_mode:
+        # 开发模式：开启热重载
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=port,
+            reload=True
+        )
+    else:
+        # 生产模式：直接运行
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=port
+        )
+
+
 
 # ============================================================
 # 打标签接口（独立）
