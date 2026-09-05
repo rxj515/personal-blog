@@ -24,16 +24,23 @@ window.Knowledge = (function () {
     // 初始化
     // =====================================================
 
-    async function init() {
 
+    async function init() {
         console.log('=================================');
         console.log('Knowledge 初始化开始');
         console.log('=================================');
-
+    
         bindEvents();
-
+        
+        // ✅ 先加载当前 PDF
+        await loadCurrentPDF();
+        
+        // ✅ 再加载 PDF 列表
+        await loadPDFList();
+        
+        // ✅ 最后加载知识库（会根据当前 PDF 加载对应数据）
         await loadKnowledge();
-
+    
         console.log('Knowledge 初始化完成');
     }
 
@@ -95,6 +102,246 @@ window.Knowledge = (function () {
                 'click',
                 tagArticles
             );
+
+        // =================================================
+        // ✅ 新增：PDF 相关事件
+        // =================================================
+
+        // 显示上传按钮
+        document
+            .getElementById('show-upload-btn')
+            ?.addEventListener(
+                'click',
+                function() {
+                    const area = document.getElementById('pdfUploadArea');
+                    if (area) {
+                        area.scrollIntoView({ behavior: 'smooth' });
+                        document.getElementById('pdfFileInput')?.click();
+                    }
+                }
+            );
+
+        // 切换 PDF 按钮
+        document
+            .getElementById('switch-pdf-btn')
+            ?.addEventListener(
+                'click',
+                function() {
+                    document.querySelector('.pdf-list-container')?.scrollIntoView({ behavior: 'smooth' });
+                }
+            );
+
+        // 文件选择
+        document
+            .getElementById('pdfFileInput')
+            ?.addEventListener(
+                'change',
+                function() {
+                    if (this.files.length > 0) {
+                        uploadPDFs();
+                    }
+                }
+            );
+
+        // 拖拽上传
+        const dropZone = document.getElementById('dropZone');
+        if (dropZone) {
+            dropZone.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                this.style.borderColor = '#2563eb';
+                this.style.background = '#eff6ff';
+            });
+
+            dropZone.addEventListener('dragleave', function(e) {
+                e.preventDefault();
+                this.style.borderColor = '';
+                this.style.background = '';
+            });
+
+            dropZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.style.borderColor = '';
+                this.style.background = '';
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    document.getElementById('pdfFileInput').files = files;
+                    uploadPDFs();
+                }
+            });
+
+            dropZone.addEventListener('click', function() {
+                document.getElementById('pdfFileInput').click();
+            });
+        }
+    }
+
+
+    // =====================================================
+    // ✅ 新增：加载 PDF 列表
+    // =====================================================
+
+    async function loadPDFList() {
+        try {
+            const result = await window.AppAPI.get('/api/pdf/list');
+            const list = document.getElementById('pdfList');
+
+            if (!list) return;
+
+            if (result.success && result.data && result.data.length > 0) {
+                list.innerHTML = result.data.map(pdf => `
+                    <div class="pdf-item">
+                        <span class="pdf-name">📄 ${escapeHtml(pdf.name)}</span>
+                        <span class="pdf-size">${(pdf.size/1024).toFixed(1)} KB</span>
+                        <div class="pdf-actions">
+                            <button class="btn-sm btn-use" onclick="window.Knowledge.selectPDF('${escapeHtml(pdf.name)}')">使用</button>
+                            <button class="btn-sm btn-delete" onclick="window.Knowledge.deletePDF('${escapeHtml(pdf.name)}')">删除</button>
+                        </div>
+                    </div>
+                `).join('');
+            } else {
+                list.innerHTML = '<div class="empty-state" style="padding:20px;text-align:center;color:#999;">暂无 PDF 文件</div>';
+            }
+        } catch (error) {
+            console.error('加载 PDF 列表失败：', error);
+        }
+    }
+
+
+    // =====================================================
+    // ✅ 新增：加载当前使用的 PDF
+    // =====================================================
+
+    async function loadCurrentPDF() {
+        try {
+            const result = await window.AppAPI.get('/api/pdf/current');
+            const nameEl = document.getElementById('current-pdf-name');
+
+            if (nameEl) {
+                if (result.success && result.data && result.data.current_pdf) {
+                    nameEl.textContent = result.data.current_pdf;
+                } else {
+                    nameEl.textContent = '未选择';
+                }
+            }
+        } catch (error) {
+            console.error('加载当前 PDF 失败：', error);
+        }
+    }
+
+    // =====================================================
+    // ✅ 选择/切换 PDF
+    // =====================================================
+
+    async function selectPDF(filename) {
+        try {
+            const result = await window.AppAPI.post('/api/pdf/select', {
+                filename: filename
+            });
+
+            if (result.success) {
+                document.getElementById('current-pdf-name').textContent = filename;
+                showToast('✅ 已切换到：' + filename, 'success');
+                
+                // ✅ 重新加载知识库（会根据当前选中的 PDF 加载对应数据）
+                await loadKnowledge();
+                
+                // 刷新列表
+                await loadPDFList();
+            } else {
+                showToast('❌ 切换失败：' + (result.message || '未知错误'), 'error');
+            }
+        } catch (error) {
+            showToast('❌ 切换失败：' + error.message, 'error');
+        }
+    }
+
+
+    // =====================================================
+    // ✅ 新增：删除 PDF
+    // =====================================================
+
+    async function deletePDF(filename) {
+        if (!confirm('确定要删除 ' + filename + ' 吗？')) return;
+
+        try {
+            const result = await window.AppAPI.delete('/api/pdf/delete?filename=' + encodeURIComponent(filename));
+
+            if (result.success) {
+                showToast('✅ ' + result.message, 'success');
+                await loadPDFList();
+                // 如果当前使用的是被删除的，重置
+                const current = document.getElementById('current-pdf-name');
+                if (current && current.textContent === filename) {
+                    current.textContent = '未选择';
+                }
+            } else {
+                showToast('❌ ' + (result.message || '删除失败'), 'error');
+            }
+        } catch (error) {
+            showToast('❌ 删除失败：' + error.message, 'error');
+        }
+    }
+
+
+    // =====================================================
+    // ✅ 新增：上传 PDF
+    // =====================================================
+
+    async function uploadPDFs() {
+        const input = document.getElementById('pdfFileInput');
+        const files = input.files;
+
+        if (files.length === 0) {
+            showToast('请选择 PDF 文件', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        for (let file of files) {
+            formData.append('files', file);
+        }
+
+        // 显示进度
+        const progress = document.getElementById('uploadProgress');
+        const fill = document.getElementById('progressFill');
+        const status = document.getElementById('uploadStatus');
+
+        if (progress) progress.style.display = 'block';
+        if (fill) fill.style.width = '50%';
+        if (status) status.textContent = '上传中...';
+
+        try {
+            const response = await fetch('/api/pdf/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (fill) fill.style.width = '100%';
+
+            if (result.success) {
+                if (status) status.textContent = '✅ 成功上传 ' + result.data.length + ' 个文件';
+                showToast('✅ 成功上传 ' + result.data.length + ' 个文件', 'success');
+                input.value = '';
+                await loadPDFList();
+                // 自动使用第一个上传的
+                if (result.data && result.data.length > 0) {
+                    await selectPDF(result.data[0].filename);
+                }
+            } else {
+                if (status) status.textContent = '❌ ' + (result.message || '上传失败');
+                showToast('❌ 上传失败：' + (result.message || '未知错误'), 'error');
+            }
+        } catch (error) {
+            if (status) status.textContent = '❌ ' + error.message;
+            showToast('❌ 上传失败：' + error.message, 'error');
+        }
+
+        setTimeout(() => {
+            if (progress) progress.style.display = 'none';
+            if (fill) fill.style.width = '0%';
+        }, 3000);
     }
 
 
@@ -102,112 +349,75 @@ window.Knowledge = (function () {
     // 加载知识库
     // =====================================================
 
-    async function loadKnowledge() {
+ // =====================================================
+// 加载知识库
+// =====================================================
 
-        const list =
-            document.getElementById(
-                'knowledge-list'
-            );
-
-        if (!list) {
-            console.error(
-                '找不到 #knowledge-list'
-            );
-            return;
-        }
-
-
-        list.innerHTML = `
-            <div class="list-loading">
-                正在读取法规知识库...
-            </div>
-        `;
-
-
-        try {
-
-            const result =
-                await window.AppAPI.get(
-                    '/api/knowledge/data'
-                );
-
-
-            console.log(
-                '知识库接口返回：',
-                result
-            );
-
-
-            if (!result.success) {
-
-                throw new Error(
-                    result.message ||
-                    '读取知识库失败'
-                );
-            }
-
-
-            knowledgeData =
-                Array.isArray(result.data)
-                    ? result.data
-                    : [];
-
-
-            console.log(
-                '知识库实际数量：',
-                knowledgeData.length
-            );
-
-
-            filteredData =
-                [...knowledgeData];
-
-
-            currentPage = 1;
-
-
-            // =================================================
-            // 生成筛选下拉框
-            // =================================================
-
-            buildFilter();
-
-
-            // =================================================
-            // 渲染
-            // =================================================
-
-            renderList();
-
-
-        } catch (error) {
-
-            console.error(
-                '知识库读取失败：',
-                error
-            );
-
-
-            list.innerHTML = `
-                <div class="empty-state">
-
-                    <div class="empty-icon">
-                        !
-                    </div>
-
-                    <div class="empty-title">
-                        知识库读取失败
-                    </div>
-
-                    <div class="empty-text">
-                        ${escapeHtml(error.message)}
-                    </div>
-
-                </div>
-            `;
-        }
+async function loadKnowledge() {
+    const list = document.getElementById('knowledge-list');
+    if (!list) {
+        console.error('找不到 #knowledge-list');
+        return;
     }
 
+    list.innerHTML = `
+        <div class="list-loading">
+            正在读取法规知识库...
+        </div>
+    `;
+
+    try {
+
+        // 获取当前选中的 PDF 名称
+        const currentPdfElement = document.getElementById('current-pdf-name');
+        let currentPdfName = '';
+        if (currentPdfElement) {
+            currentPdfName = currentPdfElement.textContent.trim();
+            // ✅ 去掉 .pdf 后缀，匹配目录名
+            if (currentPdfName.endsWith('.pdf')) {
+                currentPdfName = currentPdfName.slice(0, -4);
+            }
+        }
+
+
+        // ✅ 如果当前有选中的 PDF（不是"未选择"），就传 source 参数
+        let source = '';
+        if (currentPdfName && currentPdfName !== '未选择') {
+            source = currentPdfName;
+        }
+
+        console.log('当前选中的 PDF：', source);
+
+        // ✅ 调用 API 时带上 source 参数
+        const url = source ? `/api/knowledge/data?source=${encodeURIComponent(source)}` : '/api/knowledge/data';
+        const result = await window.AppAPI.get(url);
+
+        console.log('知识库接口返回：', result);
+
+        if (!result.success) {
+            throw new Error(result.message || '读取知识库失败');
+        }
+
+        knowledgeData = Array.isArray(result.data) ? result.data : [];
+        console.log('知识库实际数量：', knowledgeData.length);
+
+        filteredData = [...knowledgeData];
+        currentPage = 1;
+
+        buildFilter();
+        renderList();
+
+    } catch (error) {
+        console.error('知识库读取失败：', error);
+        list.innerHTML = `
+            <div class="empty-state">
+                <div class="empty-icon">!</div>
+                <div class="empty-title">知识库读取失败</div>
+                <div class="empty-text">${escapeHtml(error.message)}</div>
+            </div>
+        `;
+    }
+}
 
     // =====================================================
     // 创建章节/条款筛选
@@ -1084,7 +1294,7 @@ window.Knowledge = (function () {
 
 
     // =====================================================
-    // 对外暴露
+    // ✅ 对外暴露（增加 PDF 相关方法）
     // =====================================================
 
     return {
@@ -1092,6 +1302,16 @@ window.Knowledge = (function () {
         init,
 
         loadKnowledge,
+
+        loadPDFList,
+
+        loadCurrentPDF,
+
+        selectPDF,
+
+        deletePDF,
+
+        uploadPDFs,
 
         handleSearch,
 

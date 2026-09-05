@@ -1,243 +1,107 @@
 <div class="knowledge-page">
 
-
     <!-- 页面标题 -->
     <div class="page-header">
-
         <div>
+            <h1>📚 法规知识库</h1>
+            <p>法规、规章及安全知识统一管理</p>
+        </div>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <button class="btn-primary" id="update-knowledge-btn">更新知识库</button>
+            <button class="btn-tag" id="tag-articles-btn">🏷️ 打标签</button>
+            <button class="btn-upload" id="show-upload-btn">📤 上传PDF</button>
+        </div>
+    </div>
 
-            <h1>
-                📚 法规知识库
-            </h1>
+    <!-- ======================================== -->
+    <!-- PDF 上传和选择区域 -->
+    <!-- ======================================== -->
+    <div class="pdf-manager-card">
 
-            <p>
-                法规、规章及安全知识统一管理
-            </p>
-
+        <!-- 当前使用的 PDF -->
+        <div class="pdf-current">
+            <span class="label">📄 当前使用：</span>
+            <span id="current-pdf-name" class="pdf-name">未选择</span>
+            <button class="btn-sm btn-switch" id="switch-pdf-btn">切换</button>
         </div>
 
-        <div style="display: flex; gap: 10px;">
-            <button
-                class="btn-primary"
-                id="update-knowledge-btn"
-            >
-                更新知识库
-            </button>
+        <!-- PDF 列表和上传 -->
+        <div class="pdf-controls">
 
-            <!-- ✅ 新增：打标签按钮 -->
-            <button
-            class="btn-tag"
-            id="tag-articles-btn"
-        >
-            🏷️ 打标签
-        </button>
+            <!-- 上传区域 -->
+            <div class="pdf-upload-area" id="pdfUploadArea">
+                <div class="upload-dropzone" id="dropZone">
+                    <span class="upload-icon">📤</span>
+                    <p>拖拽 PDF 文件到这里，或点击选择</p>
+                    <input type="file" id="pdfFileInput" accept=".pdf" multiple style="display:none;">
+                    <button class="btn-sm btn-upload" onclick="document.getElementById('pdfFileInput').click()">选择文件</button>
+                </div>
+                <div id="uploadProgress" style="display:none; margin-top: 10px;">
+                    <div style="width:100%;height:6px;background:#e9ecef;border-radius:4px;overflow:hidden;">
+                        <div id="progressFill" style="width:0%;height:100%;background:#007bff;border-radius:4px;transition:width 0.3s;"></div>
+                    </div>
+                    <span id="uploadStatus" style="font-size:12px;color:#666;">上传中...</span>
+                </div>
+            </div>
+
+            <!-- PDF 列表 -->
+            <div class="pdf-list-container">
+                <div class="pdf-list-header">
+                    <span>📁 已上传的 PDF</span>
+                    <button class="btn-sm btn-refresh" onclick="loadPDFList()">🔄</button>
+                </div>
+                <div id="pdfList" class="pdf-list">
+                    <div class="empty-state" style="padding:20px;text-align:center;color:#999;">暂无 PDF 文件</div>
+                </div>
+            </div>
+
         </div>
 
     </div>
 
-
-
-
+    <!-- ======================================== -->
     <!-- 工具区域 -->
-
+    <!-- ======================================== -->
     <div class="knowledge-tools">
 
-
-        <!-- 搜索 -->
-
         <div class="search-box">
-
-
-            <span class="search-icon">
-                🔍
-            </span>
-
-
-            <input
-
-                type="text"
-
-                id="knowledge-search"
-
-                placeholder="搜索法规条文，例如：瓦斯、防爆、安全检查"
-
-            >
-
-
+            <span class="search-icon">🔍</span>
+            <input type="text" id="knowledge-search" placeholder="搜索法规条文，例如：瓦斯、防爆、安全检查">
         </div>
-
-
-
-
-        <!-- 分类 -->
 
         <div class="filter-box">
-
-
-            <span>
-                📖
-            </span>
-
-
-            <select
-
-                id="knowledge-filter"
-
-            >
-
-                <option value="">
-                    全部章节
-                </option>
-
-
+            <span>📖</span>
+            <select id="knowledge-filter">
+                <option value="">全部章节</option>
             </select>
-
-
         </div>
-
-
 
     </div>
 
-
-
-
-
-
-
-
+    <!-- ======================================== -->
     <!-- 知识库主体 -->
-
+    <!-- ======================================== -->
     <div class="knowledge-card">
 
-
-
-        <!-- 标题 -->
-
-
         <div class="card-title">
-
-
-            <div>
-
-                法规知识内容
-
-
-            </div>
-
-
-            <span
-
-                class="count-badge"
-
-                id="knowledge-count"
-
-            >
-
-                0 条
-
-            </span>
-
-
-
+            <div>法规知识内容</div>
+            <span class="count-badge" id="knowledge-count">0 条</span>
         </div>
 
-
-
-
-        <!-- 信息 -->
-
-
-        <div
-
-            class="knowledge-result-info"
-
-            id="knowledge-result-info"
-
-        >
-
+        <div class="knowledge-result-info" id="knowledge-result-info">
             共 0 条法规内容
-
-
         </div>
 
-
-
-
-        <!-- 列表 -->
-
-
-        <div
-
-            id="knowledge-list"
-
-            class="knowledge-list"
-
-        >
-
-            <div class="empty-state">
-                正在加载知识库...
-            </div>
-
+        <div id="knowledge-list" class="knowledge-list">
+            <div class="empty-state">正在加载知识库...</div>
         </div>
-
-
-
-
-        <!-- 分页 -->
-
 
         <div class="knowledge-pagination">
-
-
-            <button
-
-                type="button"
-
-                class="btn-secondary"
-
-                id="knowledge-prev"
-
-            >
-
-                上一页
-
-            </button>
-
-
-
-
-            <span id="knowledge-page-info">
-
-                1 / 1
-
-            </span>
-
-
-
-
-            <button
-
-                type="button"
-
-                class="btn-secondary"
-
-                id="knowledge-next"
-
-            >
-
-                下一页
-
-            </button>
-
-
-
+            <button type="button" class="btn-secondary" id="knowledge-prev">上一页</button>
+            <span id="knowledge-page-info">1 / 1</span>
+            <button type="button" class="btn-secondary" id="knowledge-next">下一页</button>
         </div>
 
-
-
     </div>
-
-
 
 </div>

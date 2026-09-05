@@ -29,7 +29,8 @@ import os
 from pathlib import Path
 import asyncio
 
-from fastapi import FastAPI, Body, Request
+from fastapi import FastAPI, Body, Request, UploadFile, File
+import shutil 
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -85,6 +86,9 @@ PAGES_DIR = TEMPLATES_DIR / "pages"
 # 法规知识库
 KNOWLEDGE_FILE = DATA_DIR / "articles.json"
 
+# ✅ 新增：知识库目录（每个 PDF 独立存储）
+KNOWLEDGE_DIR = DATA_DIR / "knowledge"
+
 # AI配置文件
 AI_CONFIG_FILE = CONFIG_DIR / "ai_config.json"
 
@@ -130,6 +134,12 @@ PAGES_DIR.mkdir(
 
 STATIC_DIR.mkdir(
     parents=True,
+    exist_ok=True
+)
+
+# ✅ 新增：创建 knowledge 目录
+KNOWLEDGE_DIR.mkdir(
+    parents=True, 
     exist_ok=True
 )
 
@@ -725,86 +735,161 @@ def update_knowledge():
         }
 
 
+# # ============================================================
+# # 25. 读取法规知识库
+# #
+# # GET /api/knowledge/data
+# #
+# # ============================================================
+
+# @app.get("/api/knowledge/data")
+# def get_knowledge_data():
+
+#     try:
+
+#         # ----------------------------------------------------
+#         # 检查文件
+#         # ----------------------------------------------------
+
+#         if not KNOWLEDGE_FILE.exists():
+
+#             return {
+#                 "success": False,
+#                 "message":
+#                     f"找不到法规知识库：{KNOWLEDGE_FILE}",
+#                 "count": 0,
+#                 "data": []
+#             }
+
+#         # ----------------------------------------------------
+#         # 读取JSON
+#         # ----------------------------------------------------
+
+#         data = read_json_file(
+#             KNOWLEDGE_FILE
+#         )
+
+#         if data is None:
+
+#             return {
+#                 "success": False,
+#                 "message": "法规知识库JSON读取失败",
+#                 "count": 0,
+#                 "data": []
+#             }
+
+#         # ----------------------------------------------------
+#         # 检查格式
+#         # ----------------------------------------------------
+
+#         if not isinstance(data, list):
+
+#             return {
+#                 "success": False,
+#                 "message": "法规知识库JSON格式不是数组",
+#                 "count": 0,
+#                 "data": []
+#             }
+
+#         # ----------------------------------------------------
+#         # 过滤有效条文
+#         # ----------------------------------------------------
+
+#         article_data = [
+
+#             item
+
+#             for item in data
+
+#             if isinstance(item, dict)
+#             and item.get("article")
+#             and item.get("content")
+#         ]
+
+#         return {
+#             "success": True,
+#             "message": "读取成功",
+#             "count": len(article_data),
+#             "data": article_data
+#         }
+
+#     except Exception as e:
+
+#         return {
+#             "success": False,
+#             "message": f"读取知识库失败：{e}",
+#             "count": 0,
+#             "data": []
+#         }
+
+
 # ============================================================
 # 25. 读取法规知识库
 #
 # GET /api/knowledge/data
-#
 # ============================================================
 
 @app.get("/api/knowledge/data")
-def get_knowledge_data():
-
+def get_knowledge_data(source: str = None):
+    """
+    获取知识库数据
+    - source: PDF名称（不传则返回所有合并）
+    """
     try:
-
-        # ----------------------------------------------------
-        # 检查文件
-        # ----------------------------------------------------
-
-        if not KNOWLEDGE_FILE.exists():
-
+        # 如果没有指定 source，返回所有合并
+        if not source:
+            all_data = []
+            for dir_path in KNOWLEDGE_DIR.iterdir():
+                if dir_path.is_dir():
+                    json_file = dir_path / "articles.json"
+                    if json_file.exists():
+                        with open(json_file, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            if isinstance(data, list):
+                                all_data.extend(data)
+            # 过滤有效条文
+            article_data = [
+                item for item in all_data
+                if isinstance(item, dict)
+                and item.get("article")
+                and item.get("content")
+            ]
             return {
-                "success": False,
-                "message":
-                    f"找不到法规知识库：{KNOWLEDGE_FILE}",
-                "count": 0,
-                "data": []
+                "success": True,
+                "message": "读取成功",
+                "count": len(article_data),
+                "data": article_data
             }
-
-        # ----------------------------------------------------
-        # 读取JSON
-        # ----------------------------------------------------
-
-        data = read_json_file(
-            KNOWLEDGE_FILE
-        )
-
-        if data is None:
-
+        
+        # 指定了 source，读取对应的知识库
+        json_file = KNOWLEDGE_DIR / source / "articles.json"
+        if not json_file.exists():
             return {
-                "success": False,
-                "message": "法规知识库JSON读取失败",
-                "count": 0,
-                "data": []
+                "success": True,
+                "data": [],
+                "count": 0
             }
-
-        # ----------------------------------------------------
-        # 检查格式
-        # ----------------------------------------------------
-
-        if not isinstance(data, list):
-
-            return {
-                "success": False,
-                "message": "法规知识库JSON格式不是数组",
-                "count": 0,
-                "data": []
-            }
-
-        # ----------------------------------------------------
+        
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
         # 过滤有效条文
-        # ----------------------------------------------------
-
         article_data = [
-
-            item
-
-            for item in data
-
+            item for item in data
             if isinstance(item, dict)
             and item.get("article")
             and item.get("content")
         ]
-
+        
         return {
             "success": True,
             "message": "读取成功",
             "count": len(article_data),
-            "data": article_data
+            "data": article_data,
+            "source": source
         }
-
+        
     except Exception as e:
-
         return {
             "success": False,
             "message": f"读取知识库失败：{e}",
@@ -814,57 +899,209 @@ def get_knowledge_data():
 
 
 # ============================================================
-# 26. 获取法规知识库统计
+# ✅ 新增：获取知识库来源列表
+# GET /api/knowledge/sources
+# ============================================================
+# ============================================================
+# 25. 读取法规知识库
 #
-# GET /api/knowledge/statistics
-#
+# GET /api/knowledge/data
 # ============================================================
 
-@app.get("/api/knowledge/statistics")
-def get_knowledge_statistics():
-
+@app.get("/api/knowledge/data")
+def get_knowledge_data(source: str = None):
+    """
+    获取知识库数据
+    - source: PDF名称（不传则返回所有合并）
+    """
     try:
-
-        data = read_json_file(
-            KNOWLEDGE_FILE
-        )
-
-        if not isinstance(data, list):
-
+        # 如果没有指定 source，返回所有合并
+        if not source:
+            all_data = []
+            for dir_path in KNOWLEDGE_DIR.iterdir():
+                if dir_path.is_dir():
+                    json_file = dir_path / "articles.json"
+                    if json_file.exists():
+                        with open(json_file, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            if isinstance(data, list):
+                                all_data.extend(data)
+            article_data = [
+                item for item in all_data
+                if isinstance(item, dict)
+                and item.get("article")
+                and item.get("content")
+            ]
             return {
                 "success": True,
-                "data": {
-                    "total": 0
-                }
+                "message": "读取成功",
+                "count": len(article_data),
+                "data": article_data
             }
-
-        valid_data = [
-
-            item
-
-            for item in data
-
+        
+        # ✅ 处理 source：去掉 .pdf 后缀，因为目录名没有 .pdf
+        source_name = source
+        if source_name.endswith('.pdf'):
+            source_name = source_name[:-4]  # 去掉 .pdf
+        
+        # 尝试查找目录
+        target_dir = None
+        
+        # 1. 直接查找去掉 .pdf 的目录名
+        for dir_path in KNOWLEDGE_DIR.iterdir():
+            if dir_path.is_dir() and dir_path.name == source_name:
+                target_dir = dir_path
+                break
+        
+        # 2. 如果没找到，尝试模糊匹配
+        if not target_dir:
+            for dir_path in KNOWLEDGE_DIR.iterdir():
+                if dir_path.is_dir() and source_name in dir_path.name:
+                    target_dir = dir_path
+                    break
+        
+        if not target_dir:
+            # 返回空数据
+            return {
+                "success": True,
+                "data": [],
+                "count": 0,
+                "source": source,
+                "message": f"未找到知识库：{source_name}"
+            }
+        
+        json_file = target_dir / "articles.json"
+        if not json_file.exists():
+            return {
+                "success": True,
+                "data": [],
+                "count": 0
+            }
+        
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        article_data = [
+            item for item in data
             if isinstance(item, dict)
             and item.get("article")
             and item.get("content")
         ]
+        
+        return {
+            "success": True,
+            "message": "读取成功",
+            "count": len(article_data),
+            "data": article_data,
+            "source": source_name
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"读取知识库失败：{e}",
+            "count": 0,
+            "data": []
+        }
 
+
+
+# ============================================================
+# 26. 获取法规知识库统计
+#
+# GET /api/knowledge/statistics
+# ============================================================
+
+@app.get("/api/knowledge/statistics")
+def get_knowledge_statistics():
+    try:
+        total = 0
+        sources = []
+        
+        for dir_path in KNOWLEDGE_DIR.iterdir():
+            if dir_path.is_dir():
+                json_file = dir_path / "articles.json"
+                if json_file.exists():
+                    with open(json_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            count = len(data)
+                            total += count
+                            sources.append({
+                                "name": dir_path.name,
+                                "count": count
+                            })
+        
         return {
             "success": True,
             "data": {
-                "total": len(valid_data)
+                "total": total,
+                "sources": sources
             }
         }
-
     except Exception as e:
-
         return {
             "success": False,
             "message": f"统计失败：{e}",
             "data": {
-                "total": 0
+                "total": 0,
+                "sources": []
             }
         }
+
+
+# # ============================================================
+# # 26. 获取法规知识库统计
+# #
+# # GET /api/knowledge/statistics
+# #
+# # ============================================================
+
+# @app.get("/api/knowledge/statistics")
+# def get_knowledge_statistics():
+
+#     try:
+
+#         data = read_json_file(
+#             KNOWLEDGE_FILE
+#         )
+
+#         if not isinstance(data, list):
+
+#             return {
+#                 "success": True,
+#                 "data": {
+#                     "total": 0
+#                 }
+#             }
+
+#         valid_data = [
+
+#             item
+
+#             for item in data
+
+#             if isinstance(item, dict)
+#             and item.get("article")
+#             and item.get("content")
+#         ]
+
+#         return {
+#             "success": True,
+#             "data": {
+#                 "total": len(valid_data)
+#             }
+#         }
+
+#     except Exception as e:
+
+#         return {
+#             "success": False,
+#             "message": f"统计失败：{e}",
+#             "data": {
+#                 "total": 0
+#             }
+#         }
 
 
 # ============================================================
@@ -1215,6 +1452,7 @@ def get_category_by_superior_name(superior_name):
     return SUPERIOR_TO_CATEGORY.get(superior_name, "全部工种")
 
 
+
 @app.post("/api/questions/generate-stream")
 async def generate_questions_stream(
     data: dict = Body(...)
@@ -1277,7 +1515,7 @@ async def generate_questions_stream(
             )
 
         # ----------------------------------------------------
-        # 3. ✅ 新增：接收分类（工种）信息
+        # 3. 接收分类（工种）信息
         # ----------------------------------------------------
 
         dept = data.get("dept", {})
@@ -1286,7 +1524,21 @@ async def generate_questions_stream(
         superior_name = dept.get("superiorName", "")
 
         # ----------------------------------------------------
-        # 4. 设置AI服务商
+        # 4. ✅ 获取当前选中的 PDF（从请求中读取 source）
+        # ----------------------------------------------------
+
+        source = data.get("source", "")
+
+        # 如果没有传 source，从配置读取当前使用的 PDF
+        if not source:
+            config_file = CONFIG_DIR / "pdf_config.json"
+            if config_file.exists():
+                with open(config_file, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                    source = config.get("current_pdf", "")
+
+        # ----------------------------------------------------
+        # 5. 设置AI服务商
         # ----------------------------------------------------
 
         import ai_client
@@ -1294,13 +1546,13 @@ async def generate_questions_stream(
         ai_client.set_ai_type(provider)
 
         # ----------------------------------------------------
-        # 5. 导入出题模块
+        # 6. 导入出题模块
         # ----------------------------------------------------
 
         import generate_questions as question_generator
 
         # ----------------------------------------------------
-        # 6. 创建 SSE 流式生成器
+        # 7. 创建 SSE 流式生成器
         # ----------------------------------------------------
 
         async def event_generator():
@@ -1313,25 +1565,50 @@ async def generate_questions_stream(
             success_count = 0
             failed_count = 0
 
-            # 重新加载法规知识库（使用外层的 BASE_DIR）
-            articles_file = BASE_DIR / "data" / "articles.json"
+            # ====================================================
+            # ✅ 8. 根据 source 读取对应的知识库
+            # ====================================================
 
-            if not articles_file.exists():
-                yield f"data: {json.dumps({'type': 'error', 'message': '找不到法规知识库'})}\n\n"
-                return
+            articles = []
+            law_name = "法规"
 
-            try:
-                with open(articles_file, "r", encoding="utf-8") as f:
-                    articles = json.load(f)
-            except Exception as e:
-                yield f"data: {json.dumps({'type': 'error', 'message': f'读取法规知识库失败：{e}'})}\n\n"
+            if source:
+                # 去掉 .pdf 后缀
+                source_name = source
+                if source_name.endswith('.pdf'):
+                    source_name = source_name[:-4]
+
+                # 读取对应目录的知识库
+                json_file = KNOWLEDGE_DIR / source_name / "articles.json"
+                if json_file.exists():
+                    with open(json_file, "r", encoding="utf-8") as f:
+                        articles = json.load(f)
+                    print(f"📄 出题使用知识库：{source_name}")
+                    law_name = source_name
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'message': f'找不到知识库：{source_name}'})}\n\n"
+                    return
+            else:
+                # 没有指定 source，合并所有知识库
+                for dir_path in KNOWLEDGE_DIR.iterdir():
+                    if dir_path.is_dir():
+                        json_file = dir_path / "articles.json"
+                        if json_file.exists():
+                            with open(json_file, "r", encoding="utf-8") as f:
+                                data = json.load(f)
+                                if isinstance(data, list):
+                                    articles.extend(data)
+                print(f"📄 出题使用全部知识库，共 {len(articles)} 条")
+
+            if not articles:
+                yield f"data: {json.dumps({'type': 'error', 'message': '没有找到可用的法规知识库'})}\n\n"
                 return
 
             if not isinstance(articles, list):
                 yield f"data: {json.dumps({'type': 'error', 'message': '法规知识库格式错误'})}\n\n"
                 return
 
-            # 获取法规名称
+            # 获取法规名称（从第一条数据中提取）
             law_names = {
                 item.get("law_name")
                 for item in articles
@@ -1341,7 +1618,7 @@ async def generate_questions_stream(
             if law_names:
                 law_name = list(law_names)[0]
             else:
-                law_name = "法规"
+                law_name = source if source else "法规"
 
             # 获取可出题条文
             article_list = [
@@ -1358,21 +1635,18 @@ async def generate_questions_stream(
                 return
 
             # ----------------------------------------------------
-            # ✅ 新增：根据上级名称（大类）过滤法条
+            # ✅ 根据上级名称（大类）过滤法条
             # ----------------------------------------------------
 
             if superior_name:
-                # 用上级名称判断大类
                 dept_category = get_category_by_superior_name(superior_name)
 
-                # 根据大类过滤法条
                 article_list = [
                     item for item in article_list
                     if item.get("dept_type_name") == dept_category
                     or item.get("dept_type_name") == "全部工种"
                 ]
 
-                # 如果没有匹配到法条，使用全部法条
                 if not article_list:
                     print(f"⚠️ 大类 [{dept_category}] 没有匹配到法条，使用全部法条")
 
@@ -1421,7 +1695,6 @@ async def generate_questions_stream(
 
                 current_type = type_plan[success_count]
 
-                # 找可用法规
                 available = [
                     item
                     for item in article_list
@@ -1443,7 +1716,6 @@ async def generate_questions_stream(
                 article = item.get("article", "")
                 content = item.get("content", "")
 
-                # 生成题目
                 question = question_generator.generate_one_question(
                     article,
                     content,
@@ -1456,18 +1728,15 @@ async def generate_questions_stream(
                     yield f"data: {json.dumps({'type': 'progress', 'message': f'第 {success_count + 1} 题生成失败，正在重试...', 'success': success_count, 'failed': failed_count, 'total': count})}\n\n"
                     continue
 
-                # 验证题型
                 if question.get("title_category_name") != current_type:
                     failed_questions.add((article, current_type))
                     failed_count += 1
                     continue
 
-                # 保存题目
                 new_questions.append(question)
                 used_questions.add((article, current_type))
                 success_count += 1
 
-                # 每次生成后保存 _new.json
                 try:
                     with open(new_questions_file, "w", encoding="utf-8") as f:
                         json.dump(new_questions, f, ensure_ascii=False, indent=2)
@@ -1475,13 +1744,10 @@ async def generate_questions_stream(
                     yield f"data: {json.dumps({'type': 'error', 'message': f'保存新题失败：{e}'})}\n\n"
                     return
 
-                # 推送这道题给前端
                 yield f"data: {json.dumps({'type': 'question', 'question': question, 'index': success_count, 'total': count, 'success': success_count, 'failed': failed_count})}\n\n"
 
-                # 小延迟，让前端有时间渲染
                 await asyncio.sleep(0.1)
 
-            # 所有题目生成完成后，统一追加到历史题库
             if new_questions:
                 try:
                     current_history = []
@@ -1502,7 +1768,6 @@ async def generate_questions_stream(
                 except Exception as e:
                     yield f"data: {json.dumps({'type': 'error', 'message': f'追加历史题库失败：{e}'})}\n\n"
 
-            # 发送完成信号
             yield f"data: {json.dumps({'type': 'end', 'message': f'生成完成，共生成 {success_count} 道题', 'total': success_count, 'questions': new_questions})}\n\n"
 
         # ====================================================
@@ -1537,7 +1802,7 @@ async def generate_questions_stream(
                 "message": f"AI流式出题失败：{e}"
             }
         )
-
+        
 
         
 # ============================================================
@@ -2954,6 +3219,186 @@ if __name__ == "__main__":
             host="0.0.0.0",
             port=port
         )
+
+
+
+
+
+# ============================================================
+# PDF 上传接口
+# POST /api/pdf/upload
+# ============================================================
+
+@app.post("/api/pdf/upload")
+async def upload_pdf(
+    files: list[UploadFile] = File(...)
+):
+    """
+    上传 PDF 文件到服务器
+    """
+    try:
+        uploaded_files = []
+        
+        for file in files:
+            # 检查是否是 PDF
+            if not file.filename.endswith('.pdf'):
+                continue
+            
+            # 保存路径
+            file_path = PDF_DIR / file.filename
+            
+            # 保存文件
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            
+            uploaded_files.append({
+                "filename": file.filename,
+                "size": file_path.stat().st_size
+            })
+        
+        return {
+            "success": True,
+            "message": f"成功上传 {len(uploaded_files)} 个文件",
+            "data": uploaded_files
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"上传失败：{e}"
+        }
+
+
+# ============================================================
+# 获取 PDF 列表
+# GET /api/pdf/list
+# ============================================================
+
+@app.get("/api/pdf/list")
+def list_pdfs():
+    """
+    获取所有 PDF 文件列表
+    """
+    try:
+        pdfs = []
+        for f in PDF_DIR.glob("*.pdf"):
+            pdfs.append({
+                "name": f.name,
+                "size": f.stat().st_size,
+                "modified": f.stat().st_mtime
+            })
+        return {
+            "success": True,
+            "data": pdfs
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"获取列表失败：{e}"
+        }
+
+
+# ============================================================
+# 选择当前使用的 PDF
+# POST /api/pdf/select
+# ============================================================
+
+@app.post("/api/pdf/select")
+def select_pdf(data: dict = Body(...)):
+    """
+    选择当前使用的 PDF
+    """
+    try:
+        filename = data.get("filename")
+        if not filename:
+            return {
+                "success": False,
+                "message": "缺少 filename 参数"
+            }
+        
+        # 保存到配置文件
+        config_file = CONFIG_DIR / "pdf_config.json"
+        config = {}
+        if config_file.exists():
+            with open(config_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        
+        config["current_pdf"] = filename
+        
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        
+        return {
+            "success": True,
+            "message": f"已切换到：{filename}",
+            "data": {"current_pdf": filename}
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"切换失败：{e}"
+        }
+
+
+# ============================================================
+# 获取当前使用的 PDF
+# GET /api/pdf/current
+# ============================================================
+
+@app.get("/api/pdf/current")
+def get_current_pdf():
+    """
+    获取当前使用的 PDF
+    """
+    try:
+        config_file = CONFIG_DIR / "pdf_config.json"
+        if config_file.exists():
+            with open(config_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            return {
+                "success": True,
+                "data": {"current_pdf": config.get("current_pdf")}
+            }
+        return {
+            "success": True,
+            "data": {"current_pdf": None}
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"获取失败：{e}"
+        }
+
+
+# ============================================================
+# 删除 PDF
+# DELETE /api/pdf/delete
+# ============================================================
+
+@app.delete("/api/pdf/delete")
+def delete_pdf(filename: str):
+    """
+    删除 PDF 文件
+    """
+    try:
+        file_path = PDF_DIR / filename
+        if file_path.exists():
+            file_path.unlink()
+            return {
+                "success": True,
+                "message": f"已删除：{filename}"
+            }
+        else:
+            return {
+                "success": False,
+                "message": f"文件不存在：{filename}"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"删除失败：{e}"
+        }
 
 
 

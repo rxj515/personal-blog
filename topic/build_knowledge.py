@@ -17,30 +17,20 @@ BASE_DIR = Path(__file__).resolve().parent
 
 # =========================================================
 # PDF 文件夹
-#
-# 以后不管是什么法规：
-#
-# 安全生产法.pdf
-# 消防法.pdf
-# 建筑法.pdf
-# 煤矿安全规程.pdf
-# 劳动法.pdf
-#
-# 全部直接放到这里。
 # =========================================================
 
 PDF_DIR = BASE_DIR / "pdf"
 
 
 # =========================================================
-# 法规知识库
+# ✅ 修改：知识库根目录（每个 PDF 独立存储）
 # =========================================================
 
-JSON_PATH = BASE_DIR / "data" / "articles.json"
+KNOWLEDGE_DIR = BASE_DIR / "data" / "knowledge"
 
 
 # =========================================================
-# JSON 备份
+# JSON 备份（保留，用于兼容）
 # =========================================================
 
 BACKUP_DIR = BASE_DIR / "data" / "backup"
@@ -71,7 +61,7 @@ def create_directories():
         exist_ok=True
     )
 
-    JSON_PATH.parent.mkdir(
+    KNOWLEDGE_DIR.mkdir(
         parents=True,
         exist_ok=True
     )
@@ -488,14 +478,6 @@ def is_definitions_title(line):
 
 # =========================================================
 # 8. 统一条文编号
-#
-# 第一条
-# 第 1 条
-# 第1条
-#
-# 最终统一：
-#
-# 第一条
 # =========================================================
 
 def normalize_article_number(text):
@@ -514,10 +496,6 @@ def normalize_article_number(text):
         return None
 
     number = match.group(1)
-
-    # =====================================================
-    # 阿拉伯数字
-    # =====================================================
 
     if number.isdigit():
 
@@ -573,15 +551,11 @@ def remove_page_number(lines):
         if not line:
             continue
 
-        # 横线
-
         if re.fullmatch(
             r"[—\-－_]+",
             line
         ):
             continue
-
-        # 纯数字页码
 
         if re.fullmatch(
             r"[0-9０-９]+",
@@ -604,9 +578,6 @@ def extract_pdf(pdf_path):
     print("正在读取：")
     print(pdf_path)
 
-    # doc = fitz.open(
-    #     pdf_path
-    # )
     doc = pymupdf.open(pdf_path)
 
     try:
@@ -703,10 +674,6 @@ def clean_text(all_lines):
         if not line:
             continue
 
-        # =================================================
-        # 附则
-        # =================================================
-
         if is_appendix_section(line):
 
             if current_text:
@@ -724,10 +691,6 @@ def clean_text(all_lines):
             current_section = "附则"
 
             continue
-
-        # =================================================
-        # 附录
-        # =================================================
 
         if is_definitions_title(line):
 
@@ -755,13 +718,6 @@ def clean_text(all_lines):
 
             continue
 
-        # =================================================
-        # 第一编
-        # 第一章
-        # 第一节
-        # 第一条
-        # =================================================
-
         if is_structure_line(line):
 
             if current_text:
@@ -780,10 +736,6 @@ def clean_text(all_lines):
 
             continue
 
-        # =================================================
-        # 普通正文
-        # =================================================
-
         if current_text:
 
             current_text += line
@@ -791,10 +743,6 @@ def clean_text(all_lines):
         else:
 
             current_text = line
-
-    # =====================================================
-    # 保存最后一段
-    # =====================================================
 
     if current_text:
 
@@ -884,10 +832,6 @@ def build_json(
 
         section = item["section"]
 
-        # =================================================
-        # 附录标题
-        # =================================================
-
         if is_definitions_title(text):
 
             if in_definitions:
@@ -922,10 +866,6 @@ def build_json(
             in_definitions = True
 
             continue
-
-        # =================================================
-        # 附录正文
-        # =================================================
 
         if in_definitions:
 
@@ -966,10 +906,6 @@ def build_json(
 
                 definitions_content = []
 
-        # =================================================
-        # 普通法规条文
-        # =================================================
-
         article, content = parse_article(
             text
         )
@@ -1006,10 +942,6 @@ def build_json(
         articles.append(
             data
         )
-
-    # =====================================================
-    # 保存最后一个附录
-    # =====================================================
 
     if in_definitions:
 
@@ -1142,145 +1074,62 @@ def check_law_json(
 
 
 # =========================================================
-# 19. 读取旧知识库
+# 19. ✅ 新增：保存单个 PDF 的知识库到独立目录
 # =========================================================
 
-def load_old_json():
+def save_pdf_knowledge(articles, source_file):
+    """
+    保存单个 PDF 的知识库到独立目录
+    """
+    pdf_name = Path(source_file).stem
+    pdf_name = safe_filename(pdf_name)
 
-    if not JSON_PATH.exists():
+    pdf_knowledge_dir = KNOWLEDGE_DIR / pdf_name
+    pdf_knowledge_dir.mkdir(parents=True, exist_ok=True)
 
-        return []
-
-    try:
-
-        with open(
-            JSON_PATH,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            data = json.load(f)
-
-        if isinstance(
-            data,
-            list
-        ):
-
-            return data
-
-        return []
-
-    except Exception as e:
-
-        print()
-        print(
-            f"⚠️ 读取旧知识库失败：{e}"
-        )
-
-        return []
-
-
-# =========================================================
-# 20. 备份旧 JSON
-# =========================================================
-
-def backup_old_json(
-    old_data
-):
-
-    if not old_data:
-
-        print()
-        print(
-            "当前没有旧知识库，不需要备份。"
-        )
-
-        return None
-
-    timestamp = datetime.now().strftime(
-        "%Y%m%d_%H%M%S"
-    )
-
-    backup_path = (
-        BACKUP_DIR
-        / f"articles_{timestamp}.json"
-    )
-
-    with open(
-        backup_path,
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        json.dump(
-
-            old_data,
-
-            f,
-
-            ensure_ascii=False,
-
-            indent=2
-
-        )
+    json_path = pdf_knowledge_dir / "articles.json"
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(articles, f, ensure_ascii=False, indent=2)
 
     print()
-    print(
-        "旧知识库已备份："
-    )
-    print(
-        backup_path.resolve()
-    )
+    print(f"   ✅ 保存知识库：{pdf_name}")
+    print(f"      📁 {json_path.resolve()}")
+    print(f"      📊 {len(articles)} 条记录")
 
-    return backup_path
+    return json_path
 
 
 # =========================================================
-# 21. 保存 JSON
+# 20. ✅ 新增：保存知识库索引
 # =========================================================
 
-def save_json(
-    articles
-):
+def save_index(pdf_results):
+    """
+    保存所有 PDF 的索引文件
+    """
+    index_path = KNOWLEDGE_DIR / "index.json"
 
-    with open(
-        JSON_PATH,
-        "w",
-        encoding="utf-8"
-    ) as f:
+    index_data = []
+    for result in pdf_results:
+        if result["success"]:
+            index_data.append({
+                "name": result["pdf_name"],
+                "source_file": result["source_file"],
+                "article_count": result["article_count"],
+                "path": str(result["json_path"]),
+                "created": datetime.now().isoformat()
+            })
 
-        json.dump(
-
-            articles,
-
-            f,
-
-            ensure_ascii=False,
-
-            indent=2
-
-        )
+    with open(index_path, "w", encoding="utf-8") as f:
+        json.dump(index_data, f, ensure_ascii=False, indent=2)
 
     print()
-    print(
-        "===================================="
-    )
-    print(
-        "知识库保存成功"
-    )
-    print(
-        "===================================="
-    )
-    print(
-        "实际保存位置："
-    )
-    print(
-        JSON_PATH.resolve()
-    )
+    print(f"📋 索引保存成功：{index_path.resolve()}")
+    print(f"   共 {len(index_data)} 个 PDF 知识库")
 
 
 # =========================================================
-# 22. 获取 PDF 文件
+# 21. 获取 PDF 文件
 # =========================================================
 
 def find_pdf_files():
@@ -1293,7 +1142,7 @@ def find_pdf_files():
 
 
 # =========================================================
-# 23. 显示知识库统计
+# 22. 显示知识库统计
 # =========================================================
 
 def show_statistics(
@@ -1368,7 +1217,7 @@ def show_statistics(
 
 
 # =========================================================
-# 24. 主程序
+# 23. ✅ 修改后的主程序
 # =========================================================
 
 def main():
@@ -1384,10 +1233,7 @@ def main():
         "===================================="
     )
 
-    # =====================================================
     # 创建目录
-    # =====================================================
-
     create_directories()
 
     print()
@@ -1399,10 +1245,7 @@ def main():
         PDF_DIR.resolve()
     )
 
-    # =====================================================
     # 查找 PDF
-    # =====================================================
-
     pdf_files = find_pdf_files()
 
     if not pdf_files:
@@ -1440,10 +1283,7 @@ def main():
 
         return
 
-    # =====================================================
     # 显示 PDF
-    # =====================================================
-
     print()
     print(
         f"发现 {len(pdf_files)} 个 PDF："
@@ -1458,26 +1298,12 @@ def main():
             f"{index}. {pdf_path.name}"
         )
 
-    # =====================================================
-    # 读取旧知识库
-    # =====================================================
-
-    old_data = load_old_json()
-
-    # =====================================================
-    # 本次新数据
-    # =====================================================
-
-    new_articles = []
-
+    # ✅ 本次处理结果
+    pdf_results = []
     success_count = 0
-
     failed_count = 0
 
-    # =====================================================
     # 逐个处理 PDF
-    # =====================================================
-
     for index, pdf_path in enumerate(
         pdf_files,
         start=1
@@ -1610,12 +1436,29 @@ def main():
                 continue
 
             # ---------------------------------------------
-            # 加入本次知识库
+            # ✅ 去重
             # ---------------------------------------------
 
-            new_articles.extend(
+            articles = deduplicate_articles(
                 articles
             )
+
+            # ---------------------------------------------
+            # ✅ 保存到独立目录
+            # ---------------------------------------------
+
+            json_path = save_pdf_knowledge(
+                articles,
+                pdf_path.name
+            )
+
+            pdf_results.append({
+                "success": True,
+                "pdf_name": Path(pdf_path.name).stem,
+                "source_file": pdf_path.name,
+                "article_count": len(articles),
+                "json_path": json_path
+            })
 
             success_count += 1
 
@@ -1628,109 +1471,12 @@ def main():
                 f"❌ 处理失败：{e}"
             )
 
-    # =====================================================
-    # 没有成功处理任何 PDF
-    # =====================================================
+            import traceback
+            traceback.print_exc()
 
-    if not new_articles:
-
-        print()
-        print(
-            "===================================="
-        )
-
-        print(
-            "❌ 本次没有生成任何有效法规条文。"
-        )
-
-        print(
-            "为了保护旧知识库，不修改 articles.json。"
-        )
-
-        print(
-            "===================================="
-        )
-
-        return
-
-    # =====================================================
-    # 本次数据去重
-    # =====================================================
-
-    new_articles = deduplicate_articles(
-        new_articles
-    )
-
-    # =====================================================
-    # 合并旧知识库
-    #
-    # 注意：
-    #
-    # 新法规会覆盖旧的同ID条文。
-    #
-    # 这样你重新放入新版法规时，
-    # 可以更新原来的条文。
-    # =====================================================
-
-    merged = {}
-
-    for item in old_data:
-
-        item_id = item.get(
-            "id"
-        )
-
-        if item_id:
-
-            merged[item_id] = item
-
-    for item in new_articles:
-
-        item_id = item.get(
-            "id"
-        )
-
-        if item_id:
-
-            merged[item_id] = item
-
-    final_articles = list(
-        merged.values()
-    )
-
-    # =====================================================
-    # 再次去重
-    # =====================================================
-
-    final_articles = deduplicate_articles(
-        final_articles
-    )
-
-    # =====================================================
-    # 备份旧知识库
-    # =====================================================
-
-    if old_data:
-
-        backup_old_json(
-            old_data
-        )
-
-    # =====================================================
-    # 保存
-    # =====================================================
-
-    save_json(
-        final_articles
-    )
-
-    # =====================================================
-    # 统计
-    # =====================================================
-
-    show_statistics(
-        final_articles
-    )
+    # ✅ 保存索引
+    if pdf_results:
+        save_index(pdf_results)
 
     # =====================================================
     # 最终结果
@@ -1755,21 +1501,13 @@ def main():
         f"处理失败 PDF：{failed_count} 个"
     )
 
-    print(
-        f"本次新增/更新记录：{len(new_articles)}"
-    )
-
-    print(
-        f"知识库总记录：{len(final_articles)}"
-    )
-
     print()
     print(
-        "📚 JSON实际保存位置："
+        "📁 知识库目录："
     )
 
     print(
-        JSON_PATH.resolve()
+        KNOWLEDGE_DIR.resolve()
     )
 
     print()
@@ -1812,7 +1550,7 @@ def main():
 
 
 # =========================================================
-# 25. 程序入口
+# 24. 程序入口
 # =========================================================
 
 if __name__ == "__main__":
