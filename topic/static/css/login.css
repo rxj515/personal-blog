@@ -1,0 +1,757 @@
+/* =========================================================
+   AI 智能题库系统
+   登录页面
+   ========================================================= */
+
+
+/* =========================
+   基础
+   ========================= */
+
+   * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+
+html,
+body {
+
+    width: 100%;
+    height: 100%;
+
+}
+
+
+body {
+
+    overflow: hidden;
+
+    font-family:
+        "Microsoft YaHei",
+        "PingFang SC",
+        "Segoe UI",
+        Arial,
+        sans-serif;
+
+}
+
+
+/* =========================================================
+   登录页面
+   ========================================================= */
+
+   .login-page {
+    position: relative;
+    min-height: 100vh;
+    width: 100%;
+
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+
+    padding: 40px 10% 40px 40px;
+
+    font-family: 'Segoe UI', 'Microsoft YaHei', sans-serif;
+
+    background-image:
+        linear-gradient(
+            90deg,
+            rgba(5, 20, 40, 0.02),
+            rgba(5, 20, 40, 0.20)
+        ),
+        url("/static/images/login-bg.png");
+
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+
+/* =========================================================
+   AI 背景
+   ========================================================= */
+
+.login-background {
+
+    position: absolute;
+
+    inset: 0;
+
+    background-image:
+        url("/static/images/login.png");
+
+    background-size: cover;
+
+    background-position: center;
+
+    background-repeat: no-repeat;
+
+    z-index: 0;
+
+}
+
+
+/* 背景暗层 */
+
+.login-background::after {
+
+    content: "";
+
+    position: absolute;
+
+    inset: 0;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(7, 15, 35, 0.45),
+            rgba(30, 41, 90, 0.25)
+        );
+
+}
+
+
+/* =========================================================
+   登录容器
+   ========================================================= */
+
+.login-container {
+
+    position: relative;
+
+    z-index: 2;
+
+    width: 100%;
+
+    max-width: 430px;
+
+    padding: 20px;
+
+}
+
+
+/* =========================================================
+   登录卡片
+   ========================================================= */
+
+.login-card {
+
+    width: 100%;
+
+    padding:
+        42px 42px 32px;
+
+    border-radius: 24px;
+
+    background:
+        rgba(255, 255, 255, 0.94);
+
+    border:
+        1px solid
+        rgba(255, 255, 255, 0.7);
+
+    box-shadow:
+        0 30px 80px
+        rgba(0, 0, 0, 0.35);
+
+    backdrop-filter:
+        blur(18px);
+
+    -webkit-backdrop-filter:
+        blur(18px);
+
+    transition:
+        transform 0.3s ease,
+        box-shadow 0.3s ease;
+
+}
+
+
+.login-card:hover {
+
+    transform:
+        translateY(-3px);
+
+    box-shadow:
+        0 35px 90px
+        rgba(0, 0, 0, 0.42);
+
+}
+
+
+/* =========================================================
+   AI Logo
+   ========================================================= */
+
+.login-logo {
+
+    width: 76px;
+    height: 76px;
+
+    margin:
+        0 auto 18px;
+
+    position: relative;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    border-radius: 22px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #4f46e5,
+            #7c3aed,
+            #2563eb
+        );
+
+    box-shadow:
+        0 15px 35px
+        rgba(79, 70, 229, 0.35);
+
+}
+
+
+/* AI 字样 */
+
+.ai-logo {
+
+    color: white;
+
+    font-size: 27px;
+
+    font-weight: 800;
+
+    letter-spacing: -1px;
+
+}
+
+
+/* 星光 */
+
+.ai-sparkle {
+
+    position: absolute;
+
+    right: 8px;
+
+    top: 5px;
+
+    color: white;
+
+    font-size: 16px;
+
+    opacity: 0.9;
+
+}
+
+
+/* =========================================================
+   标题
+   ========================================================= */
+
+.login-title {
+
+    text-align: center;
+
+    color: #111827;
+
+    font-size: 25px;
+
+    font-weight: 700;
+
+    letter-spacing: 1px;
+
+    margin-bottom: 7px;
+
+}
+
+
+/* =========================================================
+   副标题
+   ========================================================= */
+
+.login-subtitle {
+
+    text-align: center;
+
+    color: #6b7280;
+
+    font-size: 13px;
+
+    margin-bottom: 30px;
+
+}
+
+
+/* =========================================================
+   表单
+   ========================================================= */
+
+.form-group {
+
+    margin-bottom: 20px;
+
+}
+
+
+.form-label {
+
+    display: block;
+
+    margin-bottom: 8px;
+
+    color: #374151;
+
+    font-size: 13px;
+
+    font-weight: 600;
+
+}
+
+
+/* =========================================================
+   输入框
+   ========================================================= */
+
+.input-group {
+
+    display: flex;
+
+    width: 100%;
+
+    height: 50px;
+
+}
+
+
+.input-group-text {
+
+    width: 48px;
+
+    min-width: 48px;
+
+    height: 50px;
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    background: #f8fafc;
+
+    border:
+        1px solid
+        #e2e8f0;
+
+    color: #64748b;
+
+}
+
+
+.input-group .form-control {
+
+    flex: 1;
+
+    min-width: 0;
+
+    height: 50px;
+
+    border:
+        1px solid
+        #e2e8f0;
+
+    border-left: none;
+
+    outline: none;
+
+    background: #f8fafc;
+
+    color: #1e293b;
+
+    font-size: 14px;
+
+    padding:
+        0 14px;
+
+    box-shadow: none;
+
+}
+
+
+.input-group .form-control::placeholder {
+
+    color: #94a3b8;
+
+}
+
+
+.input-group .form-control:focus {
+
+    background: white;
+
+    border-color: #6366f1;
+
+    box-shadow:
+        0 0 0 3px
+        rgba(99, 102, 241, 0.10);
+
+}
+
+
+/* =========================================================
+   密码按钮
+   ========================================================= */
+
+#togglePassword {
+
+    width: 50px;
+
+    min-width: 50px;
+
+    height: 50px;
+
+    border:
+        1px solid
+        #e2e8f0;
+
+    border-left: none;
+
+    cursor: pointer;
+
+    color: #94a3b8;
+
+    transition:
+        all 0.2s ease;
+
+}
+
+
+#togglePassword:hover {
+
+    color: #4f46e5;
+
+    background: white;
+
+}
+
+
+/* =========================================================
+   登录按钮
+   ========================================================= */
+
+.btn-login {
+
+    width: 100%;
+
+    height: 52px;
+
+    margin-top: 6px;
+
+    border: none;
+
+    border-radius: 12px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #4f46e5,
+            #7c3aed
+        );
+
+    color: white;
+
+    font-size: 15px;
+
+    font-weight: 600;
+
+    cursor: pointer;
+
+    box-shadow:
+        0 10px 25px
+        rgba(79, 70, 229, 0.25);
+
+    transition:
+        all 0.25s ease;
+
+}
+
+
+.btn-login:hover {
+
+    transform:
+        translateY(-2px);
+
+    box-shadow:
+        0 15px 32px
+        rgba(79, 70, 229, 0.35);
+
+}
+
+
+.btn-login:active {
+
+    transform:
+        translateY(0);
+
+}
+
+
+.btn-login:disabled {
+
+    opacity: 0.65;
+
+    cursor: not-allowed;
+
+    transform: none;
+
+    box-shadow: none;
+
+}
+
+
+/* 登录按钮内容 */
+
+.login-btn-content {
+
+    display: flex;
+
+    align-items: center;
+
+    justify-content: center;
+
+    gap: 9px;
+
+}
+
+
+/* =========================================================
+   错误提示
+   ========================================================= */
+
+.alert-danger {
+
+    margin-bottom: 20px;
+
+    padding:
+        11px 14px;
+
+    border: none;
+
+    border-radius: 10px;
+
+    background:
+        #fef2f2;
+
+    color:
+        #dc2626;
+
+    font-size: 13px;
+
+}
+
+
+/* =========================================================
+   底部
+   ========================================================= */
+
+.login-footer {
+
+    margin-top: 28px;
+
+    padding-top: 20px;
+
+    text-align: center;
+
+    border-top:
+        1px solid
+        #e5e7eb;
+
+}
+
+
+.footer-main {
+
+    color: #64748b;
+
+    font-size: 12px;
+
+}
+
+
+.footer-main i {
+
+    margin-right: 5px;
+
+    color: #6366f1;
+
+}
+
+
+.footer-sub {
+
+    margin-top: 6px;
+
+    color: #a1a1aa;
+
+    font-size: 11px;
+
+}
+
+
+/* =========================================================
+   加载动画
+   ========================================================= */
+
+.spinner-dots {
+
+    display: inline-block;
+
+}
+
+
+.spinner-dots span {
+
+    display: inline-block;
+
+    width: 6px;
+
+    height: 6px;
+
+    margin:
+        0 2px;
+
+    border-radius: 50%;
+
+    background: white;
+
+    animation:
+        dotPulse 1.2s
+        infinite
+        ease-in-out;
+
+}
+
+
+.spinner-dots span:nth-child(2) {
+
+    animation-delay:
+        0.2s;
+
+}
+
+
+.spinner-dots span:nth-child(3) {
+
+    animation-delay:
+        0.4s;
+
+}
+
+
+@keyframes dotPulse {
+
+    0%,
+    80%,
+    100% {
+
+        transform:
+            scale(0.6);
+
+        opacity: 0.3;
+
+    }
+
+    40% {
+
+        transform:
+            scale(1);
+
+        opacity: 1;
+
+    }
+
+}
+
+
+/* =========================================================
+   平板
+   ========================================================= */
+
+@media (max-width: 900px) {
+
+    .login-container {
+
+        max-width: 410px;
+
+    }
+
+}
+
+
+/* =========================================================
+   手机
+   ========================================================= */
+
+@media (max-width: 480px) {
+
+    .login-container {
+
+        max-width: 100%;
+
+        padding: 15px;
+
+    }
+
+
+    .login-card {
+
+        padding:
+            35px 25px 28px;
+
+        border-radius: 20px;
+
+    }
+
+
+    .login-logo {
+
+        width: 65px;
+
+        height: 65px;
+
+        border-radius: 18px;
+
+    }
+
+
+    .ai-logo {
+
+        font-size: 23px;
+
+    }
+
+
+    .login-title {
+
+        font-size: 22px;
+
+    }
+
+
+    .login-subtitle {
+
+        font-size: 12px;
+
+        margin-bottom: 25px;
+
+    }
+
+}
