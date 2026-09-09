@@ -271,54 +271,54 @@
 
     <!-- 底部 -->
 
-
     <div class="sidebar-footer">
 
-
-         <div class="footer-row">
-
-
-            <span>
-
-                知识库
-
-            </span>
-
-
-            <b>
-
-                745条
-
-            </b>
-
-
-        </div> 
-
-
-
-        <div class="footer-row">
-
-
-            <span>
-
-                系统版本
-
-            </span>
-
-
-            <b>
-
-                v1.0.0
-
-            </b>
-
-
+        <div class="user-card">
+    
+            <div class="user-avatar">
+                👤
+            </div>
+    
+            <div class="user-detail">
+    
+                <div class="user-name" id="current-user-name">
+                    加载中...
+                </div>
+    
+                <div class="user-meta">
+                    <span id="current-user-dept">--</span>
+                    <span class="meta-divider">·</span>
+                    <span id="current-user-mine">--</span>
+                </div>
+    
+            </div>
+    
         </div>
-
-
-
+    
+        <button
+            type="button"
+            class="logout-btn"
+            onclick="App.logout()"
+        >
+            <span class="logout-icon">⇥</span>
+            <span>退出登录</span>
+        </button>
+    
+        <div class="footer-info">
+    
+            <div class="footer-row">
+                <span>知识库</span>
+                <b>778条</b>
+            </div>
+    
+            <div class="footer-row">
+                <span>系统版本</span>
+                <b>v1.0.0</b>
+            </div>
+    
+        </div>
+    
     </div>
-
 
 
 

@@ -3,13 +3,16 @@ services:
     build: .
     container_name: pdf-app
     ports:
-      - "8000:8000"
+      - "8765:8765"
     environment:
-      - PORT=8000
+      - PORT=8765
       - DEBUG=false
       - JAVA_HOST=host.docker.internal
       - JAVA_PORT=1100
       - TZ=Asia/Shanghai
+      - LANG=zh_CN.UTF-8
+      - LC_ALL=zh_CN.UTF-8
+      - LANGUAGE=zh_CN:zh
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

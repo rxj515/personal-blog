@@ -91,6 +91,9 @@ const App = {
 
         }, 1000);
 
+         // 加载当前登录用户
+        this.loadCurrentUser();
+
         // 加载AI配置
         this.loadAIStatus();
 
@@ -131,6 +134,166 @@ const App = {
 
     },
 
+
+    // =====================================================
+    // 获取当前登录用户
+    // =====================================================
+    async loadCurrentUser() {
+
+        console.log("====================================");
+        console.log("开始获取当前登录用户");
+        console.log("====================================");
+
+        try {
+
+            const response = await fetch(
+                "/api/user/info",
+                {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        "Accept": "application/json"
+                    },
+                    cache: "no-store"
+                }
+            );
+
+            console.log(
+                "用户信息接口状态:",
+                response.status
+            );
+
+            if (!response.ok) {
+
+                console.error(
+                    "用户信息接口请求失败:",
+                    response.status,
+                    response.statusText
+                );
+
+                return;
+            }
+
+            const result =
+                await response.json();
+
+            console.log(
+                "用户信息接口返回:",
+                result
+            );
+
+            if (!result || !result.success) {
+
+                console.error(
+                    "用户未登录或接口返回失败:",
+                    result
+                );
+
+                return;
+            }
+
+            const user =
+                result.data || {};
+
+            console.log(
+                "当前登录人:",
+                user.user_name
+            );
+
+            console.log(
+                "当前部门:",
+                user.subjection_name
+            );
+
+            console.log(
+                "当前矿井:",
+                user.register_dept_Name
+            );
+
+            // 用户名
+            const userName =
+                document.getElementById(
+                    "current-user-name"
+                );
+
+            if (userName) {
+
+                userName.textContent =
+                    user.user_name || "未知用户";
+
+            } else {
+
+                console.error(
+                    "找不到 current-user-name"
+                );
+
+            }
+
+            // 部门
+            const userDept =
+                document.getElementById(
+                    "current-user-dept"
+                );
+
+            if (userDept) {
+
+                userDept.textContent =
+                    user.subjection_name || "未知部门";
+
+            } else {
+
+                console.error(
+                    "找不到 current-user-dept"
+                );
+
+            }
+
+            // 矿井
+            const userMine =
+                document.getElementById(
+                    "current-user-mine"
+                );
+
+            if (userMine) {
+
+                userMine.textContent =
+                    user.mine_name || "未知矿井";
+
+            } else {
+
+                console.error(
+                    "找不到 current-user-mine"
+                );
+
+            }
+
+            console.log(
+                "✅ 当前登录用户显示完成"
+            );
+
+        } catch (error) {
+
+            console.error(
+                "❌ 获取当前登录用户失败:",
+                error
+            );
+
+        }
+    },
+
+    // =====================================================
+    // 退出登录
+    // =====================================================
+    logout() {
+
+        console.log("退出登录");
+
+        if (!confirm("确定要退出登录吗？")) {
+            return;
+        }
+
+        window.location.href = "/logout";
+    },
 
     /*
      * =====================================================
@@ -1001,6 +1164,123 @@ const App = {
             console.error('更新知识库数量失败：', error);
         }
     },
+
+
+    // // =====================================================
+    // // 获取当前登录用户
+    // // =====================================================
+    // async loadCurrentUser() {
+
+    //     try {
+
+    //         console.log("开始获取当前登录用户");
+
+    //         const result = await window.AppAPI.get(
+    //             "/api/user/info"
+    //         );
+
+    //         console.log("当前用户接口返回：", result);
+
+    //         if (!result || !result.success) {
+
+    //             console.warn(
+    //                 "当前用户未登录或获取失败"
+    //             );
+
+    //             window.location.href = "/login";
+
+    //             return;
+    //         }
+
+    //         const user = result.data || {};
+
+    //         console.log("当前登录人：", user.user_name);
+    //         console.log(
+    //             "当前部门：",
+    //             user.subjection_name
+    //         );
+    //         console.log(
+    //             "当前矿井：",
+    //             user.register_dept_Name
+    //         );
+
+    //         // -----------------------------
+    //         // 用户名
+    //         // -----------------------------
+    //         const userName =
+    //             document.getElementById(
+    //                 "current-user-name"
+    //             );
+
+    //         if (userName) {
+
+    //             userName.textContent =
+    //                 user.user_name || "未知用户";
+
+    //         }
+
+    //         // -----------------------------
+    //         // 部门
+    //         // -----------------------------
+    //         const userDept =
+    //             document.getElementById(
+    //                 "current-user-dept"
+    //             );
+
+    //         if (userDept) {
+
+    //             userDept.textContent =
+    //                 user.subjection_name || "未知部门";
+
+    //         }
+
+    //         // -----------------------------
+    //         // 矿井
+    //         // -----------------------------
+    //         const userMine =
+    //             document.getElementById(
+    //                 "current-user-mine"
+    //             );
+
+    //         if (userMine) {
+
+    //             userMine.textContent =
+    //                 user.register_dept_Name || "未知矿井";
+
+    //         }
+
+    //         console.log(
+    //             "✅ 当前登录用户信息加载完成"
+    //         );
+
+    //     } catch (error) {
+
+    //         console.error(
+    //             "❌ 获取当前登录用户失败:",
+    //             error
+    //         );
+
+    //     }
+    // },
+
+    // // =====================================================
+    // // 退出登录
+    // // =====================================================
+    // logout() {
+
+    //     const confirmed =
+    //         window.confirm(
+    //             "确定要退出登录吗？"
+    //         );
+
+    //     if (!confirmed) {
+    //         return;
+    //     }
+
+    //     console.log("正在退出登录...");
+
+    //     window.location.href = "/logout";
+    // },
 
 
     /*

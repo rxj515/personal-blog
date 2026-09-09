@@ -1,5 +1,6 @@
 # import fitz
-import pymupdf
+# import pymupdf
+import fitz as pymupdf  # ✅ 修改：重命名为 pymupdf
 import re
 import json
 import hashlib

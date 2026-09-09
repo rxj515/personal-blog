@@ -257,32 +257,43 @@ window.Knowledge = (function () {
 
 
     // =====================================================
-    // ✅ 新增：删除 PDF
+    // ✅ 删除 PDF
     // =====================================================
 
     async function deletePDF(filename) {
-        if (!confirm('确定要删除 ' + filename + ' 吗？')) return;
+        if (!confirm(`确定要删除 "${filename}" 吗？此操作不可恢复！`)) return;
 
         try {
-            const result = await window.AppAPI.delete('/api/pdf/delete?filename=' + encodeURIComponent(filename));
+            // ✅ 使用 fetch 调用 DELETE 接口
+            const response = await fetch(`/api/pdf/delete?filename=${encodeURIComponent(filename)}`, {
+                method: 'DELETE'
+            });
+
+            const result = await response.json();
 
             if (result.success) {
                 showToast('✅ ' + result.message, 'success');
+                
+                // 刷新 PDF 列表
                 await loadPDFList();
-                // 如果当前使用的是被删除的，重置
+                
+                // 如果当前使用的是被删除的文件，重置显示
                 const current = document.getElementById('current-pdf-name');
                 if (current && current.textContent === filename) {
                     current.textContent = '未选择';
+                    // 重新加载知识库
+                    await loadKnowledge();
                 }
             } else {
                 showToast('❌ ' + (result.message || '删除失败'), 'error');
             }
         } catch (error) {
+            console.error('删除失败：', error);
             showToast('❌ 删除失败：' + error.message, 'error');
         }
     }
 
-
+    
     // =====================================================
     // ✅ 新增：上传 PDF
     // =====================================================

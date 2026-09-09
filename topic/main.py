@@ -29,9 +29,9 @@ import os
 from pathlib import Path
 import asyncio
 
-from fastapi import FastAPI, Body, Request, UploadFile, File
+from fastapi import FastAPI, Body, Request, UploadFile, File, Depends
 import shutil 
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -41,6 +41,11 @@ from ai_config import (
 )
 
 import uvicorn
+
+from auth import require_login, get_current_user
+
+import secrets
+from starlette.middleware.sessions import SessionMiddleware
 
 
 # ============================================================
@@ -167,6 +172,18 @@ app.mount(
     name="static"
 )
 
+# ✅ 新增：挂载PDF目录
+app.mount(
+    "/pdfs",  # URL访问路径
+    StaticFiles(
+        directory=str(PDF_DIR)  
+    ),
+    name="pdfs"
+)
+
+print(f"\n✅ 静态目录挂载完成：")
+print(f"  /static → {STATIC_DIR}")
+print(f"  /pdfs   → {PDF_DIR}\n")
 
 # ============================================================
 # 8. HTML模板
@@ -175,6 +192,116 @@ app.mount(
 templates = Jinja2Templates(
     directory=str(TEMPLATES_DIR)
 )
+
+# ============================================================
+# Session 中间件
+# ============================================================
+
+SECRET_KEY = os.environ.get(
+    'SESSION_SECRET_KEY',
+    secrets.token_urlsafe(32)
+)
+
+
+# ============================================================
+# 全局登录拦截
+# ============================================================
+
+from starlette.middleware.base import BaseHTTPMiddleware
+
+
+class LoginMiddleware(BaseHTTPMiddleware):
+
+    async def dispatch(self, request: Request, call_next):
+
+        path = request.url.path
+
+        # ==========================================
+        # 1. 不需要登录的地址
+        # ==========================================
+        public_paths = [
+            "/login",
+            "/favicon.ico",
+        ]
+
+        # ==========================================
+        # 2. 静态资源放行
+        # ==========================================
+        if path.startswith("/static/"):
+            return await call_next(request)
+
+        # ==========================================
+        # 3. 登录页放行
+        # ==========================================
+        if path in public_paths:
+            return await call_next(request)
+
+        # ==========================================
+        # 4. 检查当前登录用户
+        # ==========================================
+        user = await get_current_user(request)
+
+        # ==========================================
+        # 5. 没有登录
+        # ==========================================
+        if not user:
+
+            # API 返回 401
+            if path.startswith("/api/"):
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "success": False,
+                        "message": "未登录，请先登录"
+                    }
+                )
+
+            # 页面跳转到登录页
+            return RedirectResponse(
+                url="/login",
+                status_code=303
+            )
+
+        # ==========================================
+        # 6. 已登录
+        # ==========================================
+        return await call_next(request)
+
+
+# ============================================================
+# 注册中间件
+# ============================================================
+
+# 先注册 LoginMiddleware
+app.add_middleware(LoginMiddleware)
+
+# 后注册 SessionMiddleware
+# Starlette 中后添加的中间件会处于外层，
+# 所以 SessionMiddleware 会在 LoginMiddleware 外层，
+# LoginMiddleware 中才能正常读取 request.session
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SECRET_KEY,
+    session_cookie="session",
+    max_age=3600 * 24 * 7,
+    same_site="lax",
+    https_only=False,
+    path="/"
+)
+
+print("✅ Session中间件已启用")
+print("✅ 全局登录拦截已启用")
+
+
+# ============================================================
+# 导入认证模块并注册路由
+# ============================================================
+
+from auth import setup_auth_routes, render_page
+
+setup_auth_routes(app, templates)
+
+print("✅ 认证路由已注册")
 
 
 # ============================================================
@@ -261,84 +388,63 @@ def page_exists(page_name: str):
 # 12. 首页
 # ============================================================
 
-# @app.get("/")
-# def index(request: Request):
+async def check_page_login(request: Request):
+    user = await get_current_user(request)
 
-#     return templates.TemplateResponse(
-#         request=request,
-#         name="index.html"
-#     )
+    if not user:
+        return RedirectResponse(url="/login")
+
+    return None
+
 
 @app.get("/")
-def index(request: Request):
+async def index(request: Request):
+    user = await get_current_user(request)
+
+    if not user:
+        return RedirectResponse(
+            url="/login",
+            status_code=303
+        )
+
     return templates.TemplateResponse(
         "index.html",
         {"request": request}
     )
 
-
-# ============================================================
-# 13. 工作台
-# ============================================================
-
 @app.get("/dashboard")
-def dashboard(request: Request):
-
-        return templates.TemplateResponse(
-        "pages/dashboard.html",
-        {"request": request}
+async def dashboard(request: Request):
+    return await render_page(
+        request,
+        "pages/dashboard.html"
     )
-
-
-# ============================================================
-# 14. 法规知识库
-# ============================================================
 
 @app.get("/knowledge")
-def knowledge(request: Request):
-
-        return templates.TemplateResponse(
-        "pages/knowledge.html",
-        {"request": request}
+async def knowledge(request: Request):
+    return await render_page(
+        request,
+        "pages/knowledge.html"
     )
-
-
-# ============================================================
-# 15. AI智能出题
-# ============================================================
 
 @app.get("/ai-question")
-def ai_question(request: Request):
-
-        return templates.TemplateResponse(
-            "pages/ai_question.html",
-            {"request": request}
+async def ai_question(request: Request):
+    return await render_page(
+        request,
+        "pages/ai_question.html"
     )
-
-
-# ============================================================
-# 16. 题库管理
-# ============================================================
 
 @app.get("/question-bank")
-def question_bank(request: Request):
-
-        return templates.TemplateResponse(
-        "pages/question_bank.html",
-        {"request": request}
+async def question_bank(request: Request):
+    return await render_page(
+        request,
+        "pages/question_bank.html"
     )
 
-
-# ============================================================
-# 17. 系统设置
-# ============================================================
-
 @app.get("/system")
-def system(request: Request):
-
-        return templates.TemplateResponse(
-            "pages/system.html",
-            {"request": request}
+async def system(request: Request):
+    return await render_page(
+        request,
+        "pages/system.html"
     )
 
 
@@ -440,28 +546,6 @@ def read_ai_config():
         )
 
 
-# ============================================================
-# 20. 保存AI配置
-#
-# POST /api/system/ai/config
-#
-# 前端可以传：
-#
-# {
-#     "provider": "deepseek",
-#     "model": "deepseek-chat",
-#     "base_url": "https://api.deepseek.com/chat/completions"
-# }
-#
-# 也兼容旧前端：
-#
-# {
-#     "ai": "deepseek",
-#     "model": "deepseek-chat",
-#     "base_url": "..."
-# }
-#
-# ============================================================
 
 # ============================================================
 # 20. 保存AI配置
@@ -735,94 +819,6 @@ def update_knowledge():
         }
 
 
-# # ============================================================
-# # 25. 读取法规知识库
-# #
-# # GET /api/knowledge/data
-# #
-# # ============================================================
-
-# @app.get("/api/knowledge/data")
-# def get_knowledge_data():
-
-#     try:
-
-#         # ----------------------------------------------------
-#         # 检查文件
-#         # ----------------------------------------------------
-
-#         if not KNOWLEDGE_FILE.exists():
-
-#             return {
-#                 "success": False,
-#                 "message":
-#                     f"找不到法规知识库：{KNOWLEDGE_FILE}",
-#                 "count": 0,
-#                 "data": []
-#             }
-
-#         # ----------------------------------------------------
-#         # 读取JSON
-#         # ----------------------------------------------------
-
-#         data = read_json_file(
-#             KNOWLEDGE_FILE
-#         )
-
-#         if data is None:
-
-#             return {
-#                 "success": False,
-#                 "message": "法规知识库JSON读取失败",
-#                 "count": 0,
-#                 "data": []
-#             }
-
-#         # ----------------------------------------------------
-#         # 检查格式
-#         # ----------------------------------------------------
-
-#         if not isinstance(data, list):
-
-#             return {
-#                 "success": False,
-#                 "message": "法规知识库JSON格式不是数组",
-#                 "count": 0,
-#                 "data": []
-#             }
-
-#         # ----------------------------------------------------
-#         # 过滤有效条文
-#         # ----------------------------------------------------
-
-#         article_data = [
-
-#             item
-
-#             for item in data
-
-#             if isinstance(item, dict)
-#             and item.get("article")
-#             and item.get("content")
-#         ]
-
-#         return {
-#             "success": True,
-#             "message": "读取成功",
-#             "count": len(article_data),
-#             "data": article_data
-#         }
-
-#     except Exception as e:
-
-#         return {
-#             "success": False,
-#             "message": f"读取知识库失败：{e}",
-#             "count": 0,
-#             "data": []
-#         }
-
-
 # ============================================================
 # 25. 读取法规知识库
 #
@@ -1013,7 +1009,12 @@ def get_knowledge_data(source: str = None):
 # ============================================================
 
 @app.get("/api/knowledge/statistics")
-def get_knowledge_statistics():
+def get_knowledge_statistics(
+     user: dict = Depends(require_login)
+):
+    print("当前用户:", user.get("user_name"))
+    print("当前部门:", user.get("subjection_name"))
+    print("当前矿井:", user.get("register_dept_Name"))
     try:
         total = 0
         sources = []
@@ -1049,377 +1050,6 @@ def get_knowledge_statistics():
             }
         }
 
-
-# # ============================================================
-# # 26. 获取法规知识库统计
-# #
-# # GET /api/knowledge/statistics
-# #
-# # ============================================================
-
-# @app.get("/api/knowledge/statistics")
-# def get_knowledge_statistics():
-
-#     try:
-
-#         data = read_json_file(
-#             KNOWLEDGE_FILE
-#         )
-
-#         if not isinstance(data, list):
-
-#             return {
-#                 "success": True,
-#                 "data": {
-#                     "total": 0
-#                 }
-#             }
-
-#         valid_data = [
-
-#             item
-
-#             for item in data
-
-#             if isinstance(item, dict)
-#             and item.get("article")
-#             and item.get("content")
-#         ]
-
-#         return {
-#             "success": True,
-#             "data": {
-#                 "total": len(valid_data)
-#             }
-#         }
-
-#     except Exception as e:
-
-#         return {
-#             "success": False,
-#             "message": f"统计失败：{e}",
-#             "data": {
-#                 "total": 0
-#             }
-#         }
-
-
-# ============================================================
-# 27. AI生成题目（普通模式，保留兼容）
-#
-# POST /api/questions/generate
-#
-# 注意：
-# 1. AI模型不从前端传递
-# 2. AI模型统一读取 config/ai_config.json
-# 3. main.py 不负责AI调用
-# 4. generate_questions.py 不需要接收 model
-#
-# ============================================================
-
-# # ============================================================
-# # 28. AI生成题目（流式模式 - SSE）
-# #
-# # POST /api/questions/generate-stream
-# #
-# # 每生成一道题就立即通过 SSE 推送给前端
-# #
-# # ============================================================
-
-# @app.post("/api/questions/generate-stream")
-# async def generate_questions_stream(
-#     data: dict = Body(...)
-# ):
-#     try:
-
-#         # ----------------------------------------------------
-#         # 1. 获取AI配置
-#         # ----------------------------------------------------
-
-#         ai = get_ai_config()
-
-#         provider = (
-#             ai.get("provider")
-#             or ai.get("ai")
-#             or "ollama"
-#         )
-
-#         # ----------------------------------------------------
-#         # 2. 获取参数
-#         # ----------------------------------------------------
-
-#         question_type = data.get(
-#             "question_type",
-#             "单选题"
-#         )
-
-#         try:
-#             count = int(
-#                 data.get(
-#                     "count",
-#                     10
-#                 )
-#             )
-#         except (TypeError, ValueError):
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={
-#                     "success": False,
-#                     "message": "题目数量必须是整数"
-#                 }
-#             )
-
-#         if count < 1:
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={
-#                     "success": False,
-#                     "message": "题目数量必须大于0"
-#                 }
-#             )
-
-#         if count > 100:
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={
-#                     "success": False,
-#                     "message": "一次最多生成100道题"
-#                 }
-#             )
-
-#         # ----------------------------------------------------
-#         # 3. 设置AI服务商
-#         # ----------------------------------------------------
-
-#         import ai_client
-
-#         ai_client.set_ai_type(provider)
-
-#         # ----------------------------------------------------
-#         # 4. 导入出题模块
-#         # ----------------------------------------------------
-
-#         import generate_questions as question_generator
-
-#         # ----------------------------------------------------
-#         # 5. 创建 SSE 流式生成器
-#         # ----------------------------------------------------
-
-#         async def event_generator():
-
-#             # 发送开始信号
-#             yield f"data: {json.dumps({'type': 'start', 'message': '开始生成题目...', 'total': count})}\n\n"
-
-#             # 用于收集所有题目
-#             all_questions = []
-#             success_count = 0
-#             failed_count = 0
-
-#             # 重新加载法规知识库（使用外层的 BASE_DIR）
-#             articles_file = BASE_DIR / "data" / "articles.json"
-
-#             if not articles_file.exists():
-#                 yield f"data: {json.dumps({'type': 'error', 'message': '找不到法规知识库'})}\n\n"
-#                 return
-
-#             try:
-#                 with open(articles_file, "r", encoding="utf-8") as f:
-#                     articles = json.load(f)
-#             except Exception as e:
-#                 yield f"data: {json.dumps({'type': 'error', 'message': f'读取法规知识库失败：{e}'})}\n\n"
-#                 return
-
-#             if not isinstance(articles, list):
-#                 yield f"data: {json.dumps({'type': 'error', 'message': '法规知识库格式错误'})}\n\n"
-#                 return
-
-#             # 获取法规名称
-#             law_names = {
-#                 item.get("law_name")
-#                 for item in articles
-#                 if isinstance(item, dict) and item.get("law_name")
-#             }
-
-#             if law_names:
-#                 law_name = list(law_names)[0]
-#             else:
-#                 law_name = "法规"
-
-#             # 获取可出题条文
-#             article_list = [
-#                 item
-#                 for item in articles
-#                 if isinstance(item, dict)
-#                 and item.get("type") == "article"
-#                 and item.get("article")
-#                 and item.get("content")
-#             ]
-
-#             if not article_list:
-#                 yield f"data: {json.dumps({'type': 'error', 'message': '没有找到可用于出题的法规条文'})}\n\n"
-#                 return
-
-#             # 生成题型计划
-#             import random
-
-#             if question_type in ("判断题", "单选题", "多选题"):
-#                 type_plan = [question_type for _ in range(count)]
-#             else:
-#                 types = ["判断题", "单选题", "多选题"]
-#                 type_plan = [types[i % 3] for i in range(count)]
-#                 random.shuffle(type_plan)
-
-#             # 读取历史题库（用于去重）
-#             history_file = question_generator.get_question_file(law_name, use_new=False)
-#             history_questions = []
-
-#             if history_file.exists():
-#                 try:
-#                     with open(history_file, "r", encoding="utf-8") as f:
-#                         history_questions = json.load(f)
-#                         if not isinstance(history_questions, list):
-#                             history_questions = []
-#                 except Exception:
-#                     history_questions = []
-
-#             used_questions = {
-#                 (
-#                     item.get("article"),
-#                     item.get("title_category_name")
-#                 )
-#                 for item in history_questions
-#                 if isinstance(item, dict)
-#                 and item.get("article")
-#                 and item.get("title_category_name")
-#             }
-
-#             failed_questions = set()
-#             new_questions = []
-
-#             # 获取 _new.json 文件路径
-#             new_questions_file = question_generator.get_question_file(law_name, use_new=True)
-
-#             # 循环生成每一道题
-#             while success_count < count:
-
-#                 current_type = type_plan[success_count]
-
-#                 # 找可用法规
-#                 available = [
-#                     item
-#                     for item in article_list
-#                     if (
-#                         (item.get("article"), current_type)
-#                         not in used_questions
-#                     )
-#                     and (
-#                         (item.get("article"), current_type)
-#                         not in failed_questions
-#                     )
-#                 ]
-
-#                 if not available:
-#                     yield f"data: {json.dumps({'type': 'warning', 'message': f'当前题型 {current_type} 没有更多可用法规条文'})}\n\n"
-#                     break
-
-#                 item = random.choice(available)
-#                 article = item.get("article", "")
-#                 content = item.get("content", "")
-
-#                 # 生成题目
-#                 question = question_generator.generate_one_question(
-#                     article,
-#                     content,
-#                     current_type
-#                 )
-
-#                 if question is None:
-#                     failed_questions.add((article, current_type))
-#                     failed_count += 1
-#                     yield f"data: {json.dumps({'type': 'progress', 'message': f'第 {success_count + 1} 题生成失败，正在重试...', 'success': success_count, 'failed': failed_count, 'total': count})}\n\n"
-#                     continue
-
-#                 # 验证题型
-#                 if question.get("title_category_name") != current_type:
-#                     failed_questions.add((article, current_type))
-#                     failed_count += 1
-#                     continue
-
-#                 # 保存题目
-#                 new_questions.append(question)
-#                 used_questions.add((article, current_type))
-#                 success_count += 1
-
-#                 # 每次生成后保存 _new.json
-#                 try:
-#                     with open(new_questions_file, "w", encoding="utf-8") as f:
-#                         json.dump(new_questions, f, ensure_ascii=False, indent=2)
-#                 except Exception as e:
-#                     yield f"data: {json.dumps({'type': 'error', 'message': f'保存新题失败：{e}'})}\n\n"
-#                     return
-
-#                 # 推送这道题给前端
-#                 yield f"data: {json.dumps({'type': 'question', 'question': question, 'index': success_count, 'total': count, 'success': success_count, 'failed': failed_count})}\n\n"
-
-#                 # 小延迟，让前端有时间渲染
-#                 await asyncio.sleep(0.1)
-
-#             # 所有题目生成完成后，统一追加到历史题库
-#             if new_questions:
-#                 try:
-#                     current_history = []
-#                     if history_file.exists():
-#                         try:
-#                             with open(history_file, "r", encoding="utf-8") as f:
-#                                 current_history = json.load(f)
-#                                 if not isinstance(current_history, list):
-#                                     current_history = []
-#                         except Exception:
-#                             current_history = []
-
-#                     current_history.extend(new_questions)
-
-#                     with open(history_file, "w", encoding="utf-8") as f:
-#                         json.dump(current_history, f, ensure_ascii=False, indent=2)
-
-#                 except Exception as e:
-#                     yield f"data: {json.dumps({'type': 'error', 'message': f'追加历史题库失败：{e}'})}\n\n"
-
-#             # 发送完成信号
-#             yield f"data: {json.dumps({'type': 'end', 'message': f'生成完成，共生成 {success_count} 道题', 'total': success_count, 'questions': new_questions})}\n\n"
-
-#         # ====================================================
-#         # 返回 SSE 流式响应
-#         # ====================================================
-
-#         return StreamingResponse(
-#             event_generator(),
-#             media_type="text/event-stream",
-#             headers={
-#                 "Cache-Control": "no-cache",
-#                 "Connection": "keep-alive",
-#                 "X-Accel-Buffering": "no"
-#             }
-#         )
-
-#     except Exception as e:
-
-#         print()
-#         print("=" * 60)
-#         print("AI流式出题失败")
-#         print("=" * 60)
-#         print("异常类型：", type(e).__name__)
-#         print("异常信息：", e)
-#         print("=" * 60)
-#         print()
-
-#         return JSONResponse(
-#             status_code=500,
-#             content={
-#                 "success": False,
-#                 "message": f"AI流式出题失败：{e}"
-#             }
-#         )
         
 
 def get_category_by_superior_name(superior_name):
@@ -2298,12 +1928,34 @@ def export_questions(
 
 @app.post("/api/questions/import")
 def import_questions_to_db(
-    data: dict = Body(...)
+    data: dict = Body(...),
+    user: dict = Depends(require_login)
 ):
+
     """
     将题目导入到MySQL数据库
     """
     try:
+        # 当前登录用户
+        user_id = user.get("id")
+        user_name = user.get("user_name")
+        dept_name = user.get("subjection_name")
+        mine_name = user.get("register_dept_Name")
+
+        print("========================================")
+        print("       当前导入操作用户")
+        print("========================================")
+        print(f"用户ID   : {user_id}")
+        print(f"用户     : {user_name}")
+        print(f"部门     : {dept_name}")
+        print(f"矿井     : {mine_name}")
+        print("========================================")
+
+        data["create_user_id"] = user_id
+        data["create_user_name"] = user_name
+        data["create_dept_name"] = dept_name
+        data["create_mine_name"] = mine_name
+
 
         print()
         print("=" * 60)
@@ -2443,242 +2095,6 @@ def import_questions_to_db(
                 "message": f"导入数据库失败：{e}"
             }
         )
-
-
-
-
-# # ============================================================
-# # 获取题库分类列表（从 Java 后端获取）
-# #
-# # GET /api/dept/list
-# #
-# # ============================================================
-
-# @app.get("/api/dept/list")
-# def get_dept_list():
-#     """
-#     从 Java 后端获取题库分类列表（包含层级结构）
-#     """
-#     try:
-#         import requests
-        
-#         # ✅ 走网关，端口固定 1100
-#         # java_api_url = "http://localhost:1100/deptBankType/getExcelTypeSelectPy"
-
-#         # 从环境变量读取Java后端地址，支持Docker容器间通信
-#         java_host = os.environ.get('JAVA_HOST', 'localhost')
-#         java_port = os.environ.get('JAVA_PORT', '1100')
-#         java_api_url = f"http://{java_host}:{java_port}/deptBankType/getExcelTypeSelectPy"
-
-        
-#         # 后端加了 @SaIgnore 后，不需要 token 了
-#         response = requests.get(
-#             java_api_url,
-#             timeout=10,
-#             headers={"Content-Type": "application/json"}
-#         )
-        
-#         if response.status_code == 200:
-#             # 后端直接返回数组，不是包一层对象
-#             data = response.json()
-            
-#             # 兼容处理：如果是字典且有 data 字段，取 data；如果是数组，直接用
-#             if isinstance(data, dict):
-#                 items = data.get("data", [])
-#             else:
-#                 items = data
-            
-#             # 构建树形结构
-#             dept_list = []
-#             dept_map = {}
-            
-#             # 先全部转换为字典
-#             for item in items:
-#                 dept_id = item.get("id")
-                
-#                 # ✅ 修复：parentId 可能是 "0" 或 null，需要统一处理
-#                 parent_id = item.get("parentId") or ""
-#                 if parent_id == "0":
-#                     parent_id = ""
-                
-#                 dept_map[dept_id] = {
-#                     "id": dept_id,
-#                     "name": item.get("name"),
-#                     "code": item.get("code"),
-#                     "parentId": parent_id,
-#                     "superiorId": item.get("superiorId") or "",
-#                     "superiorName": item.get("superiorName"),
-#                     "subjectionId": item.get("subjectionId"),
-#                     "subjectionName": item.get("subjectionName"),
-#                     # ✅ 修复：isMine 可能是 null，需要统一为 0
-#                     "isMine": item.get("isMine") or 0,
-#                     "children": []
-#                 }
-            
-#             # 构建层级关系
-#             root_list = []
-#             for dept_id, dept in dept_map.items():
-#                 parent_id = dept["parentId"]
-#                 if parent_id and parent_id in dept_map:
-#                     dept_map[parent_id]["children"].append(dept)
-#                 else:
-#                     root_list.append(dept)
-            
-#             return {
-#                 "success": True,
-#                 "data": root_list
-#             }
-#         else:
-#             return {
-#                 "success": False,
-#                 "message": f"获取分类失败：HTTP {response.status_code}",
-#                 "data": []
-#             }
-            
-#     except requests.exceptions.ConnectionError:
-#         print("Java 后端未连接，使用本地缓存数据")
-#         return {
-#             "success": False,
-#             "message": "Java 后端未连接，使用本地缓存数据",
-#             "data": get_local_dept_list()
-#         }
-        
-#     except Exception as e:
-#         print(f"获取分类异常：{e}")
-#         return {
-#             "success": False,
-#             "message": f"获取分类失败：{str(e)}",
-#             "data": get_local_dept_list()
-#         }
-
-# def get_local_dept_list():
-#     """
-#     本地分类数据（当 Java 后端不可用时使用）
-#     """
-#     return [
-#         {
-#             "id": "1",
-#             "name": "鑫隆煤业",
-#             "code": "xlmy",
-#             "parentId": "",
-#             "superiorId": "",
-#             "superiorName": "",
-#             "subjectionId": "001",
-#             "subjectionName": "鑫隆煤业",
-#             "isMine": 1,
-#             "children": [
-#                 {
-#                     "id": "101",
-#                     "name": "抽采工",
-#                     "code": "ccg",
-#                     "parentId": "1",
-#                     "superiorId": "1",
-#                     "superiorName": "鑫隆煤业",
-#                     "subjectionId": "001",
-#                     "subjectionName": "鑫隆煤业",
-#                     "isMine": 1,
-#                     "children": []
-#                 },
-#                 {
-#                     "id": "102",
-#                     "name": "泵站值班员",
-#                     "code": "bzzby",
-#                     "parentId": "1",
-#                     "superiorId": "1",
-#                     "superiorName": "鑫隆煤业",
-#                     "subjectionId": "001",
-#                     "subjectionName": "鑫隆煤业",
-#                     "isMine": 1,
-#                     "children": []
-#                 },
-#                 {
-#                     "id": "103",
-#                     "name": "观察工",
-#                     "code": "gcg",
-#                     "parentId": "1",
-#                     "superiorId": "1",
-#                     "superiorName": "鑫隆煤业",
-#                     "subjectionId": "001",
-#                     "subjectionName": "鑫隆煤业",
-#                     "isMine": 1,
-#                     "children": []
-#                 },
-#                 {
-#                     "id": "104",
-#                     "name": "探水",
-#                     "code": "ts",
-#                     "parentId": "1",
-#                     "superiorId": "1",
-#                     "superiorName": "鑫隆煤业",
-#                     "subjectionId": "001",
-#                     "subjectionName": "鑫隆煤业",
-#                     "isMine": 1,
-#                     "children": [
-#                         {
-#                             "id": "1041",
-#                             "name": "探水工",
-#                             "code": "tsg",
-#                             "parentId": "104",
-#                             "superiorId": "1",
-#                             "superiorName": "鑫隆煤业",
-#                             "subjectionId": "001",
-#                             "subjectionName": "鑫隆煤业",
-#                             "isMine": 1,
-#                             "children": []
-#                         }
-#                     ]
-#                 },
-#                 {
-#                     "id": "105",
-#                     "name": "地面机电队",
-#                     "code": "dmjdd",
-#                     "parentId": "1",
-#                     "superiorId": "1",
-#                     "superiorName": "鑫隆煤业",
-#                     "subjectionId": "001",
-#                     "subjectionName": "鑫隆煤业",
-#                     "isMine": 1,
-#                     "children": []
-#                 },
-#                 {
-#                     "id": "106",
-#                     "name": "监控信息",
-#                     "code": "jkxx",
-#                     "parentId": "1",
-#                     "superiorId": "1",
-#                     "superiorName": "鑫隆煤业",
-#                     "subjectionId": "001",
-#                     "subjectionName": "鑫隆煤业",
-#                     "isMine": 1,
-#                     "children": []
-#                 },
-#                 {
-#                     "id": "107",
-#                     "name": "安全管理人员",
-#                     "code": "aqglry",
-#                     "parentId": "1",
-#                     "superiorId": "1",
-#                     "superiorName": "鑫隆煤业",
-#                     "subjectionId": "001",
-#                     "subjectionName": "鑫隆煤业",
-#                     "isMine": 1,
-#                     "children": []
-#                 },
-#                 {
-#                     "id": "108",
-#                     "name": "通风机房",
-#                     "code": "tffj",
-#                     "parentId": "1",
-#                     "superiorId": "1",
-#                     "superiorName": "鑫隆煤业",
-#                     "subjectionId": "001",
-#                     "subjectionName": "鑫隆煤业",
-#                     "isMine": 1,
-#                     "children": []
-#                 }
-#             ]
-#         }
-#     ]
 
 
 # ============================================================
@@ -2969,265 +2385,13 @@ def get_pages():
     }
 
 
-# ============================================================
-# 34. 全局异常处理
-# ============================================================
-
-@app.exception_handler(404)
-async def not_found_handler(
-    request: Request,
-    exc
-):
-
-    # API请求返回JSON
-    if request.url.path.startswith("/api/"):
-
-        return JSONResponse(
-            status_code=404,
-            content={
-                "success": False,
-                "message":
-                    f"接口不存在：{request.url.path}"
-            }
-        )
-
-    # 普通网页请求
-    return JSONResponse(
-        status_code=404,
-        content={
-            "success": False,
-            "message": "页面不存在"
-        }
-    )
-
-
-# # ============================================================
-# # 35. 启动
-# # ============================================================
-
-# if __name__ == "__main__":
-
-#     print()
-#     print("=" * 60)
-#     print(
-#         "        通用法规 AI 系统"
-#     )
-#     print("=" * 60)
-#     print()
-
-#     print(
-#         "AI服务正在启动……"
-#     )
-
-#     print()
-
-#     print(
-#         "访问地址："
-#     )
-
-#     print(
-#         "http://127.0.0.1:8000"
-#     )
-
-#     print()
-
-#     print(
-#         "工作台："
-#     )
-
-#     print(
-#         "http://127.0.0.1:8000/dashboard"
-#     )
-
-#     print()
-
-#     print(
-#         "法规知识库："
-#     )
-
-#     print(
-#         "http://127.0.0.1:8000/knowledge"
-#     )
-
-#     print()
-
-#     print(
-#         "AI智能出题："
-#     )
-
-#     print(
-#         "http://127.0.0.1:8000/ai-question"
-#     )
-
-#     print()
-
-#     print(
-#         "题库管理："
-#     )
-
-#     print(
-#         "http://127.0.0.1:8000/question-bank"
-#     )
-
-#     print()
-
-#     print(
-#         "系统设置："
-#     )
-
-#     print(
-#         "http://127.0.0.1:8000/system"
-#     )
-
-#     print()
-
-#     print(
-#         "API文档："
-#     )
-
-#     print(
-#         "http://127.0.0.1:8000/docs"
-#     )
-
-#     print()
-
-#     print("=" * 60)
-#     print()
-
-#     uvicorn.run(
-#         app,
-#         host="0.0.0.0",
-#         port=8000
-#     )
-
-# ============================================================
-# 35. 启动
-# ============================================================
-
-if __name__ == "__main__":
-
-    print()
-    print("=" * 60)
-    print(
-        "        通用法规 AI 系统"
-    )
-    print("=" * 60)
-    print()
-
-    print(
-        "AI服务正在启动……"
-    )
-
-    print()
-
-    print(
-        "访问地址："
-    )
-
-    print(
-        "http://127.0.0.1:8000"
-    )
-
-    print()
-
-    print(
-        "工作台："
-    )
-
-    print(
-        "http://127.0.0.1:8000/dashboard"
-    )
-
-    print()
-
-    print(
-        "法规知识库："
-    )
-
-    print(
-        "http://127.0.0.1:8000/knowledge"
-    )
-
-    print()
-
-    print(
-        "AI智能出题："
-    )
-
-    print(
-        "http://127.0.0.1:8000/ai-question"
-    )
-
-    print()
-
-    print(
-        "题库管理："
-    )
-
-    print(
-        "http://127.0.0.1:8000/question-bank"
-    )
-
-    print()
-
-    print(
-        "系统设置："
-    )
-
-    print(
-        "http://127.0.0.1:8000/system"
-    )
-
-    print()
-
-    print(
-        "API文档："
-    )
-
-    print(
-        "http://127.0.0.1:8000/docs"
-    )
-
-    print()
-
-    print("=" * 60)
-    print()
-
-    # ============================================================
-    # ✅ 修改这里：从环境变量读取配置
-    # ============================================================
-    import os
-    
-    # 从环境变量获取端口，默认8000
-    port = int(os.environ.get('PORT', 8000))
-    
-    # 从环境变量获取是否调试模式
-    debug_mode = os.environ.get('DEBUG', 'false').lower() == 'true'
-    
-    if debug_mode:
-        # 开发模式：开启热重载
-        uvicorn.run(
-            "main:app",
-            host="0.0.0.0",
-            port=port,
-            reload=True
-        )
-    else:
-        # 生产模式：直接运行
-        uvicorn.run(
-            app,
-            host="0.0.0.0",
-            port=port
-        )
-
-
-
-
 
 # ============================================================
 # PDF 上传接口
 # POST /api/pdf/upload
 # ============================================================
+
+import hashlib
 
 @app.post("/api/pdf/upload")
 async def upload_pdf(
@@ -3237,38 +2401,127 @@ async def upload_pdf(
     上传 PDF 文件到服务器
     """
     try:
+        # ✅ 如果没有上传任何文件
+        if not files:
+            return {
+                "success": False,
+                "message": "没有选择任何文件",
+                "data": []
+            }
+        
         uploaded_files = []
+        duplicate_files = []
+        skipped_files = []  # 非PDF文件
         
         for file in files:
             # 检查是否是 PDF
             if not file.filename.endswith('.pdf'):
+                skipped_files.append({
+                    "filename": file.filename,
+                    "reason": "不是PDF文件"
+                })
                 continue
             
-            # 保存路径
-            file_path = PDF_DIR / file.filename
+            # ✅ 安全处理文件名
+            filename = file.filename.replace('/', '_').replace('\\', '_').replace(' ', '_')
+            
+            # ✅ 读取文件内容
+            content = await file.read()
+            
+            # ✅ 计算文件 MD5
+            md5_hash = hashlib.md5(content).hexdigest()
+            
+            # ✅ 检查是否存在相同 MD5 的文件
+            is_duplicate = False
+            duplicate_info = None
+            for existing_file in PDF_DIR.iterdir():
+                if existing_file.is_file() and existing_file.suffix == '.pdf':
+                    with open(existing_file, 'rb') as f:
+                        existing_md5 = hashlib.md5(f.read()).hexdigest()
+                        if existing_md5 == md5_hash:
+                            is_duplicate = True
+                            duplicate_info = {
+                                "filename": file.filename,
+                                "existing_file": existing_file.name,
+                                "reason": "文件内容完全相同"
+                            }
+                            break
+            
+            if is_duplicate:
+                duplicate_files.append(duplicate_info)
+                continue
+            
+            # ✅ 如果文件名已存在，添加序号
+            file_path = PDF_DIR / filename
+            if file_path.exists():
+                base = file_path.stem
+                ext = file_path.suffix
+                counter = 1
+                while file_path.exists():
+                    file_path = PDF_DIR / f"{base}_{counter}{ext}"
+                    counter += 1
             
             # 保存文件
             with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
+                buffer.write(content)
             
             uploaded_files.append({
-                "filename": file.filename,
-                "size": file_path.stat().st_size
+                "filename": file_path.name,
+                "size": file_path.stat().st_size,
+                "md5": md5_hash
             })
         
+        # ✅ 构建详细的返回信息
+        total = len(files)
+        uploaded_count = len(uploaded_files)
+        duplicate_count = len(duplicate_files)
+        skipped_count = len(skipped_files)
+        
+        # ✅ 智能构建消息
+        if uploaded_count == 0 and duplicate_count > 0:
+            # 所有文件都是重复的
+            message = f"所有 {duplicate_count} 个文件均为重复文件，已跳过上传"
+        elif uploaded_count == 0 and skipped_count > 0:
+            # 所有文件都不是PDF
+            message = f"所有 {skipped_count} 个文件都不是PDF格式，已跳过"
+        elif uploaded_count == 0 and duplicate_count == 0 and skipped_count == 0:
+            # 理论上不会发生，但以防万一
+            message = "没有文件被上传"
+        elif uploaded_count > 0 and duplicate_count > 0:
+            # 部分上传，部分重复
+            message = f"成功上传 {uploaded_count} 个文件，{duplicate_count} 个文件重复被跳过"
+            if skipped_count > 0:
+                message += f"，{skipped_count} 个非PDF文件被忽略"
+        elif uploaded_count > 0:
+            # 全部成功上传
+            message = f"成功上传 {uploaded_count} 个文件"
+            if skipped_count > 0:
+                message += f"，{skipped_count} 个非PDF文件被忽略"
+        else:
+            message = "没有文件被上传"
+        
         return {
-            "success": True,
-            "message": f"成功上传 {len(uploaded_files)} 个文件",
-            "data": uploaded_files
+            "success": uploaded_count > 0 or duplicate_count > 0,  # 如果有文件处理就算成功
+            "message": message,
+            "data": uploaded_files,  # 成功上传的文件
+            "summary": {
+                "total": total,
+                "uploaded": uploaded_count,
+                "duplicates": duplicate_count,
+                "skipped": skipped_count
+            },
+            "duplicates": duplicate_files,  # 重复文件列表
+            "skipped": skipped_files  # 跳过的文件列表
         }
         
     except Exception as e:
         return {
             "success": False,
-            "message": f"上传失败：{e}"
+            "message": f"上传失败：{e}",
+            "data": []
         }
 
-
+        
 # ============================================================
 # 获取 PDF 列表
 # GET /api/pdf/list
@@ -3353,16 +2606,29 @@ def get_current_pdf():
     """
     try:
         config_file = CONFIG_DIR / "pdf_config.json"
+        current_pdf = None
+        
         if config_file.exists():
             with open(config_file, "r", encoding="utf-8") as f:
                 config = json.load(f)
-            return {
-                "success": True,
-                "data": {"current_pdf": config.get("current_pdf")}
-            }
+                current_pdf = config.get("current_pdf")
+        
+        # ✅ 检查文件是否存在
+        if current_pdf:
+            file_path = PDF_DIR / current_pdf
+            if not file_path.exists():
+                # ✅ 文件不存在，清除配置
+                if config_file.exists():
+                    with open(config_file, "r", encoding="utf-8") as f:
+                        config = json.load(f)
+                    config["current_pdf"] = None
+                    with open(config_file, "w", encoding="utf-8") as f:
+                        json.dump(config, f, ensure_ascii=False, indent=2)
+                current_pdf = None
+        
         return {
             "success": True,
-            "data": {"current_pdf": None}
+            "data": {"current_pdf": current_pdf}
         }
     except Exception as e:
         return {
@@ -3370,9 +2636,8 @@ def get_current_pdf():
             "message": f"获取失败：{e}"
         }
 
-
 # ============================================================
-# 删除 PDF
+# 删除 PDF（增强版）
 # DELETE /api/pdf/delete
 # ============================================================
 
@@ -3382,18 +2647,60 @@ def delete_pdf(filename: str):
     删除 PDF 文件
     """
     try:
-        file_path = PDF_DIR / filename
-        if file_path.exists():
-            file_path.unlink()
+        # ✅ 安全检查：防止路径遍历攻击
+        import re
+        if not re.match(r'^[\w\u4e00-\u9fa5\-_.]+$', filename):
             return {
-                "success": True,
-                "message": f"已删除：{filename}"
+                "success": False,
+                "message": "文件名包含非法字符"
             }
-        else:
+        
+        # ✅ 确保文件名以 .pdf 结尾
+        if not filename.lower().endswith('.pdf'):
+            return {
+                "success": False,
+                "message": "只能删除 PDF 文件"
+            }
+        
+        file_path = PDF_DIR / filename
+        
+        # ✅ 检查文件是否存在
+        if not file_path.exists():
             return {
                 "success": False,
                 "message": f"文件不存在：{filename}"
             }
+        
+        # ✅ 检查是否是文件（不是目录）
+        if not file_path.is_file():
+            return {
+                "success": False,
+                "message": f"{filename} 不是文件"
+            }
+        
+        # ✅ 删除文件
+        file_path.unlink()
+        
+        # ✅ 如果删除的是当前使用的 PDF，清除配置
+        config_file = CONFIG_DIR / "pdf_config.json"
+        if config_file.exists():
+            with open(config_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            if config.get("current_pdf") == filename:
+                config["current_pdf"] = None
+                with open(config_file, "w", encoding="utf-8") as f:
+                    json.dump(config, f, ensure_ascii=False, indent=2)
+        
+        return {
+            "success": True,
+            "message": f"已删除：{filename}"
+        }
+        
+    except PermissionError:
+        return {
+            "success": False,
+            "message": f"没有权限删除文件：{filename}"
+        }
     except Exception as e:
         return {
             "success": False,
@@ -3867,3 +3174,151 @@ def delete_bank_question(
                 "message": f"删除失败：{str(e)}"
             }
         )
+
+        
+
+# ============================================================
+# 34. 全局异常处理
+# ============================================================
+
+@app.exception_handler(404)
+async def not_found_handler(
+    request: Request,
+    exc
+):
+
+    # API请求返回JSON
+    if request.url.path.startswith("/api/"):
+
+        return JSONResponse(
+            status_code=404,
+            content={
+                "success": False,
+                "message":
+                    f"接口不存在：{request.url.path}"
+            }
+        )
+
+    # 普通网页请求
+    return JSONResponse(
+        status_code=404,
+        content={
+            "success": False,
+            "message": "页面不存在"
+        }
+    )
+
+
+
+if __name__ == "__main__":
+
+    print()
+    print("=" * 60)
+    print(
+        "        通用法规 AI 系统"
+    )
+    print("=" * 60)
+    print()
+
+    print(
+        "AI服务正在启动……"
+    )
+
+    print()
+
+    print(
+        "访问地址："
+    )
+
+    print(
+        "http://127.0.0.1:8765"  # ← 8765 → 8765
+    )
+
+    print()
+
+    print(
+        "工作台："
+    )
+
+    print(
+        "http://127.0.0.1:8765/dashboard"  # ← 8765 → 8765
+    )
+
+    print()
+
+    print(
+        "法规知识库："
+    )
+
+    print(
+        "http://127.0.0.1:8765/knowledge"  # ← 8765 → 8765
+    )
+
+    print()
+
+    print(
+        "AI智能出题："
+    )
+
+    print(
+        "http://127.0.0.1:8765/ai-question"  # ← 8765 → 8765
+    )
+
+    print()
+
+    print(
+        "题库管理："
+    )
+
+    print(
+        "http://127.0.0.1:8765/question-bank"  # ← 8765 → 8765
+    )
+
+    print()
+
+    print(
+        "系统设置："
+    )
+
+    print(
+        "http://127.0.0.1:8765/system"  # ← 8765 → 8765
+    )
+
+    print()
+
+    print(
+        "API文档："
+    )
+
+    print(
+        "http://127.0.0.1:8765/docs"  # ← 8765 → 8765
+    )
+
+    print()
+
+    print("=" * 60)
+    print()
+
+    # ============================================================
+    # 启动服务
+    # ============================================================
+    import os
+    
+    port = int(os.environ.get('PORT', 8765))  # ← 这个也要确认是 8765
+    
+    debug_mode = os.environ.get('DEBUG', 'false').lower() == 'true'
+    
+    if debug_mode:
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=port,
+            reload=True
+        )
+    else:
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=port
+        )
+
