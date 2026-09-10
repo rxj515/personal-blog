@@ -61,7 +61,7 @@ body {
             rgba(5, 20, 40, 0.02),
             rgba(5, 20, 40, 0.20)
         ),
-        url("/static/images/login-bg.png");
+        url("/static/images/login.png");
 
     background-size: cover;
     background-position: center;

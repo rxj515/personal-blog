@@ -1,303 +1,424 @@
 # ============================================================
 # import_questions_db.py
-# 导入题目到 study_dept_bank_manage 表
 #
+# Python AI题库
+# 调用 Java 接口导入 study_dept_bank_manage
+#
+# Python → Java Gateway → bs-local → MySQL
 # ============================================================
 
-import pymysql
-from datetime import datetime
-import uuid
-import urllib.parse
+import os
+import requests
+
 
 # ============================================================
-# 数据库配置
+# Java 接口地址
 # ============================================================
 
-DB_CONFIG = {
-    'host': 'localhost',
-    'port': 3306,
-    'user': 'root',
-    'password': 'root',
-    'database': 'xlmy_exam',
-    'charset': 'utf8mb4'
-}
+JAVA_IMPORT_URL = os.getenv(
+    "JAVA_IMPORT_URL",
+    "http://localhost:1100/deptBankManage/python/import"
+)
+
 
 # ============================================================
 # 主函数
 # ============================================================
 
-def main(data: dict):
+def main(data: dict, java_token: str = None):
+
     """
-    导入题目到 study_dept_bank_manage 表
+    调用 Java 接口导入题目
+
+    参数：
+        data:
+        {
+            "dept": {
+                "id": "xxx",
+                "fullName": "xxx"
+            },
+            "create_user_id": "xxx",
+            "create_user_name": "xxx",
+            "questions": [
+                {
+                    "question_type": "单选题",
+                    "title": "题目",
+                    "plan_a": "选项A",
+                    "plan_b": "选项B",
+                    "plan_c": "选项C",
+                    "plan_d": "选项D",
+                    "answer": "A",
+                    "analysis": "解析"
+                }
+            ]
+        }
+
+        java_token:
+            当前 Java 登录用户的 Sa-Token
     """
+
+    # ========================================================
+    # 1. 检查 Java Token
+    # ========================================================
+
+    if not java_token:
+
+        print("❌ 当前没有 Java 登录 Token")
+
+        return {
+            "total": 0,
+            "inserted": 0,
+            "skipped": 0,
+            "errors": [
+                "Java登录状态已失效，请重新进入通用法规 AI"
+            ]
+        }
+
+    # ========================================================
+    # 2. 获取题目
+    # ========================================================
+
     questions = data.get("questions", [])
-    
-    # 获取分类信息
+
+    if not questions:
+
+        return {
+            "total": 0,
+            "inserted": 0,
+            "skipped": 0,
+            "errors": [
+                "没有可导入的题目"
+            ]
+        }
+
+    # ========================================================
+    # 3. 获取分类
+    # ========================================================
+
     dept = data.get("dept", {})
+
     dept_id = dept.get("id", "")
     dept_name = dept.get("fullName", "")
-    
-    # 获取当前用户（如果前端没传，用系统默认）
-    create_user_id = data.get("create_user_id", "system")
-    create_user_name = data.get("create_user_name", "系统导入")
-    
-    if not questions:
-        return {
-            "total": 0,
-            "inserted": 0,
-            "skipped": 0,
-            "errors": ["没有可导入的题目"]
-        }
-    
+
     if not dept_id:
+
         return {
-            "total": 0,
+            "total": len(questions),
             "inserted": 0,
             "skipped": 0,
-            "errors": ["请先选择所属分类"]
+            "errors": [
+                "请先选择所属分类"
+            ]
         }
 
-    connection = None
+    # ========================================================
+    # 4. 获取创建用户
+    #
+    # 当前先兼容你原来的方式。
+    #
+    # 后续如果 Java 导入接口直接从 Sa-Token 获取用户，
+    # 这里甚至可以不再传 create_user_id / create_user_name。
+    # ========================================================
+
+    create_user_id = data.get(
+        "create_user_id",
+        "system"
+    )
+
+    create_user_name = data.get(
+        "create_user_name",
+        "系统导入"
+    )
+
+    # ========================================================
+    # 5. 组装给 Java 的数据
+    # ========================================================
+
+    java_data = {
+
+        "dept": {
+            "id": dept_id,
+            "fullName": dept_name
+        },
+
+        "create_user_id": create_user_id,
+
+        "create_user_name": create_user_name,
+
+        "questions": questions
+    }
+
+    # ========================================================
+    # 6. 调用 Java
+    # ========================================================
 
     try:
-        connection = pymysql.connect(
-            host=DB_CONFIG['host'],
-            port=DB_CONFIG['port'],
-            user=DB_CONFIG['user'],
-            password=DB_CONFIG['password'],
-            database=DB_CONFIG['database'],
-            charset=DB_CONFIG['charset']
+
+        print("=" * 60)
+        print("🔗 正在调用 Java 题库导入接口")
+        print("=" * 60)
+
+        print(f"Java接口：{JAVA_IMPORT_URL}")
+        print(f"题目数量：{len(questions)}")
+        print(f"分类ID：{dept_id}")
+        print(f"分类名称：{dept_name}")
+        print(f"创建用户ID：{create_user_id}")
+        print(f"创建用户名：{create_user_name}")
+
+        # ====================================================
+        # 重要：
+        # 把当前 Java 登录用户的 Sa-Token 传给 Gateway
+        # ====================================================
+
+        headers = {
+            "satoken": java_token
+        }
+
+        response = requests.post(
+
+            JAVA_IMPORT_URL,
+
+            headers=headers,
+
+            json=java_data,
+
+            timeout=120
         )
 
-        # 使用 DictCursor，这样传参时可以用字典，避免 %s 数量对不上的问题
-        cursor = connection.cursor(pymysql.cursors.DictCursor)
+        print(
+            f"Java HTTP状态码：{response.status_code}"
+        )
 
-        # ----------------------------------------------------
-        # 获取当前最大 index_num
-        # ----------------------------------------------------
-        cursor.execute("SELECT MAX(index_num) AS max_idx FROM study_dept_bank_manage")
-        result = cursor.fetchone()
-        max_index = result['max_idx'] if result and result['max_idx'] else 0
+        # ====================================================
+        # 7. HTTP错误
+        # ====================================================
 
-        # ----------------------------------------------------
-        # 插入数据
-        # ----------------------------------------------------
-        inserted_count = 0
-        skipped_count = 0
-        errors = []
+        response.raise_for_status()
 
-        for idx, q in enumerate(questions, 1):
-            try:
-                # ----------------------------------------------------
-                # 1. 提取数据
-                # ----------------------------------------------------
-                
-                # 题型
-                question_type = (
-                    q.get("question_type") or
-                    q.get("type") or
-                    q.get("title_category_name") or
-                    "单选题"
+        # ====================================================
+        # 8. 解析 Java 返回结果
+        # ====================================================
+
+        result = response.json()
+
+        print("Java返回：")
+        print(result)
+
+        # ====================================================
+        # 9. Java正常返回
+        # ====================================================
+
+        if result.get("code") == 200:
+
+            java_result = result.get(
+                "data",
+                {}
+            )
+
+            inserted = java_result.get(
+                "inserted",
+                0
+            )
+
+            skipped = java_result.get(
+                "skipped",
+                0
+            )
+
+            errors = java_result.get(
+                "errors",
+                []
+            )
+
+            print()
+
+            print("=" * 60)
+            print("📊 导入统计")
+            print("=" * 60)
+
+            print(
+                f"总数：{len(questions)} 道"
+            )
+
+            print(
+                f"成功：{inserted} 道 ✅"
+            )
+
+            print(
+                f"跳过：{skipped} 道 ⏭️"
+            )
+
+            if errors:
+
+                print(
+                    f"错误：{len(errors)} 条 ❌"
                 )
 
-                # 题目内容
-                title = (
-                    q.get("title") or
-                    q.get("subjects") or
-                    q.get("question") or
-                    q.get("content") or
-                    ""
-                )
+                for error in errors:
 
-                # 选项
-                option_a = q.get("plan_a") or q.get("plan_A") or ""
-                option_b = q.get("plan_b") or q.get("plan_B") or ""
-                option_c = q.get("plan_c") or q.get("plan_C") or ""
-                option_d = q.get("plan_d") or q.get("plan_D") or ""
-                option_e = q.get("plan_e") or q.get("plan_E") or ""
-                option_f = q.get("plan_f") or q.get("plan_F") or ""
-
-                # 如果选项为空，尝试从 options 字段读取
-                if not any([option_a, option_b, option_c, option_d, option_e, option_f]):
-                    options_data = q.get("options", {})
-                    if isinstance(options_data, dict):
-                        option_a = options_data.get("A", "")
-                        option_b = options_data.get("B", "")
-                        option_c = options_data.get("C", "")
-                        option_d = options_data.get("D", "")
-                        option_e = options_data.get("E", "")
-                        option_f = options_data.get("F", "")
-
-                # 答案
-                answer = (
-                    q.get("answer") or
-                    q.get("correct_answer") or
-                    q.get("correctAnswer") or
-                    ""
-                )
-
-                # 解析
-                analysis = (
-                    q.get("analysis") or
-                    q.get("explanation") or
-                    q.get("explain") or
-                    ""
-                )
-
-                if not title:
-                    skipped_count += 1
-                    continue
-
-                # ----------------------------------------------------
-                # 2. 检查是否已存在（去重）
-                # ----------------------------------------------------
-                check_sql = """
-                    SELECT id FROM study_dept_bank_manage 
-                    WHERE subjects = %s 
-                      AND title_category_name = %s
-                      AND dept_type_name = %s
-                    LIMIT 1
-                """
-                cursor.execute(check_sql, (title, question_type, dept_name))
-                existing = cursor.fetchone()
-
-                if existing:
-                    skipped_count += 1
-                    print(f"⏭️ 跳过第 {idx} 题（已存在）")
-                    continue
-
-                # ----------------------------------------------------
-                # 3. 生成 ID 和序号
-                # ----------------------------------------------------
-                record_id = str(uuid.uuid4()).replace('-', '')
-                max_index += 1
-
-                # ----------------------------------------------------
-                # 4. 构建 options 和 options_content
-                # ----------------------------------------------------
-                options_str = f"A:{option_a};B:{option_b};C:{option_c};D:{option_d}"
-                if option_e:
-                    options_str += f";E:{option_e}"
-                if option_f:
-                    options_str += f";F:{option_f}"
-
-                options_content = f"{option_a}|{option_b}|{option_c}|{option_d}"
-                if option_e:
-                    options_content += f"|{option_e}"
-                if option_f:
-                    options_content += f"|{option_f}"
-
-                # ----------------------------------------------------
-                # 5. 构建 content（URL 编码后的 HTML）
-                # ----------------------------------------------------
-                if analysis:
-                    content_html = f"<p>{analysis}</p>"
-                    content = urllib.parse.quote(content_html)
-                else:
-                    content = None
-
-                # content_text（纯文本）
-                content_text = title
-
-                # ----------------------------------------------------
-                # 6. 执行插入（用字典传参，绝对不会报参数数量错误）
-                # ----------------------------------------------------
-                insert_data = {
-                    'id': record_id,
-                    'index_num': max_index,
-
-                    'create_user_id': create_user_id,
-                    'create_user_name': create_user_name,
-                    'create_date': datetime.now(),
-                    
-                    # 'subjection_id': dept.get("subjectionId", ""),
-                    # 'subjection_name': dept.get("subjectionName", ""),
-                    # 'title_category_id': '1',
-                    'title_category_name': question_type,
-                    'dept_type_id': dept_id,
-                    'dept_type_name': dept_name,
-                    'subjects': title,
-                    'plan_A': option_a,
-                    'plan_B': option_b,
-                    'plan_C': option_c,
-                    'plan_D': option_d,
-                    'plan_E': option_e,
-                    'plan_F': option_f,
-                    # 'options': options_str,
-                    # 'options_content': options_content,
-                    'answer': answer,
-                    'analysis': analysis,
-                    'content': content,
-                    # 'content_text': content_text,
-                    # 'illustrate': '',
-                    # 'type': question_type
-                }
-                
-                # 把字典转换成元组，直接插入
-                fields = list(insert_data.keys())
-                values = list(insert_data.values())
-                placeholders = ", ".join(["%s"] * len(fields))
-                
-                sql = f"""
-                    INSERT INTO study_dept_bank_manage (
-                        {", ".join(fields)}
-                    ) VALUES (
-                        {placeholders}
+                    print(
+                        f"  - {error}"
                     )
-                """
-                
-                cursor.execute(sql, tuple(values))
 
-                inserted_count += 1
-                print(f"✅ 第 {idx} 题导入成功")
+            print("=" * 60)
 
-            except Exception as e:
-                errors.append(f"第 {idx} 题失败：{str(e)}")
-                print(f"❌ 第 {idx} 题失败：{e}")
+            # =================================================
+            # 返回给 Python 上层
+            # =================================================
 
-        connection.commit()
+            return {
 
-        print()
-        print("=" * 60)
-        print("📊 导入统计")
-        print("=" * 60)
-        print(f"总数：{len(questions)} 道")
-        print(f"成功：{inserted_count} 道 ✅")
-        print(f"跳过：{skipped_count} 道 ⏭️")
-        if errors:
-            print(f"错误：{len(errors)} 条 ❌")
-        print("=" * 60)
+                "total": java_result.get(
+                    "total",
+                    len(questions)
+                ),
+
+                "inserted": inserted,
+
+                "skipped": skipped,
+
+                "errors": errors
+            }
+
+        # ====================================================
+        # 10. Java业务错误
+        # ====================================================
+
+        else:
+
+            msg = result.get(
+                "msg",
+                "Java接口返回失败"
+            )
+
+            print(
+                f"❌ Java导入失败：{msg}"
+            )
+
+            return {
+
+                "total": len(questions),
+
+                "inserted": 0,
+
+                "skipped": 0,
+
+                "errors": [
+                    msg
+                ]
+            }
+
+    # ========================================================
+    # 11. 网络超时
+    # ========================================================
+
+    except requests.exceptions.Timeout:
+
+        print(
+            "❌ 调用 Java 接口超时"
+        )
 
         return {
-            "total": len(questions),
-            "inserted": inserted_count,
-            "skipped": skipped_count,
-            "errors": errors
-        }
 
-    except pymysql.Error as e:
-        print(f"❌ 数据库错误：{e}")
-        if connection:
-            connection.rollback()
-        return {
             "total": len(questions),
+
             "inserted": 0,
+
             "skipped": 0,
-            "errors": [f"数据库错误：{str(e)}"]
+
+            "errors": [
+                "调用 Java 题库导入接口超时"
+            ]
         }
+
+    # ========================================================
+    # 12. Java连接失败
+    # ========================================================
+
+    except requests.exceptions.ConnectionError as e:
+
+        print(
+            f"❌ 无法连接 Java：{e}"
+        )
+
+        return {
+
+            "total": len(questions),
+
+            "inserted": 0,
+
+            "skipped": 0,
+
+            "errors": [
+                "无法连接 Java 服务器"
+            ]
+        }
+
+    # ========================================================
+    # 13. HTTP错误
+    # ========================================================
+
+    except requests.exceptions.HTTPError as e:
+
+        print(
+            f"❌ Java HTTP错误：{e}"
+        )
+
+        return {
+
+            "total": len(questions),
+
+            "inserted": 0,
+
+            "skipped": 0,
+
+            "errors": [
+                f"Java接口HTTP错误：{str(e)}"
+            ]
+        }
+
+    # ========================================================
+    # 14. JSON解析错误
+    # ========================================================
+
+    except ValueError as e:
+
+        print(
+            f"❌ Java返回的数据不是合法JSON：{e}"
+        )
+
+        return {
+
+            "total": len(questions),
+
+            "inserted": 0,
+
+            "skipped": 0,
+
+            "errors": [
+                "Java返回的数据格式错误"
+            ]
+        }
+
+    # ========================================================
+    # 15. 其他异常
+    # ========================================================
 
     except Exception as e:
-        print(f"❌ 错误：{e}")
-        if connection:
-            connection.rollback()
-        return {
-            "total": len(questions),
-            "inserted": 0,
-            "skipped": 0,
-            "errors": [f"错误：{str(e)}"]
-        }
 
-    finally:
-        if connection:
-            connection.close()
-            print("✅ 数据库连接已关闭")
+        print(
+            f"❌ 导入失败：{e}"
+        )
+
+        return {
+
+            "total": len(questions),
+
+            "inserted": 0,
+
+            "skipped": 0,
+
+            "errors": [
+                f"导入失败：{str(e)}"
+            ]
+        }

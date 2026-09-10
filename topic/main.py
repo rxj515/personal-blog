@@ -37,6 +37,7 @@ from fastapi.templating import Jinja2Templates
 
 from ai_config import (
     get_ai_config,
+    get_public_ai_config,
     save_ai_config
 )
 
@@ -221,6 +222,7 @@ class LoginMiddleware(BaseHTTPMiddleware):
         # ==========================================
         public_paths = [
             "/login",
+            "/sso/login",
             "/favicon.ico",
         ]
 
@@ -231,7 +233,7 @@ class LoginMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # ==========================================
-        # 3. 登录页放行
+        # 3. 登录页、SSO入口放行
         # ==========================================
         if path in public_paths:
             return await call_next(request)
@@ -268,6 +270,7 @@ class LoginMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
 
+
 # ============================================================
 # 注册中间件
 # ============================================================
@@ -275,10 +278,6 @@ class LoginMiddleware(BaseHTTPMiddleware):
 # 先注册 LoginMiddleware
 app.add_middleware(LoginMiddleware)
 
-# 后注册 SessionMiddleware
-# Starlette 中后添加的中间件会处于外层，
-# 所以 SessionMiddleware 会在 LoginMiddleware 外层，
-# LoginMiddleware 中才能正常读取 request.session
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
@@ -480,12 +479,6 @@ def get_config():
             "http://localhost:11434"
         )
 
-        # ✅ 新增：读取 api_key
-        api_key = ai.get(
-            "api_key",
-            ""
-        )
-
         return {
             "success": True,
             "data": {
@@ -499,9 +492,6 @@ def get_config():
 
                 "base_url": base_url,
 
-                "api_key": api_key,   # ✅ 新增
-
-                # 为了兼容旧前端
                 "ai": provider
             }
         }
@@ -528,7 +518,7 @@ def read_ai_config():
 
     try:
 
-        config = get_ai_config()
+        config = get_public_ai_config()
 
         return {
             "success": True,
@@ -629,7 +619,12 @@ def update_ai_config(
         return {
             "success": True,
             "message": "AI配置保存成功",
-            "data": config
+            "data": {
+                "provider": config["provider"],
+                "model": config["model"],
+                "base_url": config["base_url"],
+                "api_key": "******" if config.get("api_key") else ""
+            }
         }
 
     except Exception as e:
@@ -691,7 +686,12 @@ def save_config(
         return {
             "success": True,
             "message": "AI配置保存成功",
-            "data": config
+            "data": {
+                "provider": config["provider"],
+                "model": config["model"],
+                "base_url": config["base_url"],
+                "api_key": "******" if config.get("api_key") else ""
+            }
         }
 
     except Exception as e:
@@ -1928,19 +1928,36 @@ def export_questions(
 
 @app.post("/api/questions/import")
 def import_questions_to_db(
+    request: Request,
     data: dict = Body(...),
     user: dict = Depends(require_login)
 ):
-
     """
     将题目导入到MySQL数据库
+
+    当前登录用户：
+        Python Session 中的用户
+
+    Java Token：
+        Python Session 中的 java_token
+
+    调用链：
+        Python → Java Gateway → Java导入接口 → MySQL
     """
+
     try:
-        # 当前登录用户
+
+        # ====================================================
+        # 1. 当前登录用户
+        # ====================================================
+
         user_id = user.get("id")
         user_name = user.get("user_name")
         dept_name = user.get("subjection_name")
-        mine_name = user.get("register_dept_Name")
+
+        # 这里你原来写的是 register_dept_Name
+        # 注意大小写应该和 get_current_user() 返回的数据一致
+        mine_name = user.get("register_dept_name")
 
         print("========================================")
         print("       当前导入操作用户")
@@ -1951,20 +1968,44 @@ def import_questions_to_db(
         print(f"矿井     : {mine_name}")
         print("========================================")
 
+        # ====================================================
+        # 2. 获取当前 Java 登录 Token
+        # ====================================================
+
+        java_token = request.session.get("java_token")
+
+        if not java_token:
+
+            print("❌ 当前 Python Session 没有 Java Token")
+
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "success": False,
+                    "message": "Java登录状态已失效，请重新进入通用法规 AI"
+                }
+            )
+
+        print("✅ 当前 Java Token：已获取")
+
+        # ====================================================
+        # 3. 强制使用当前登录用户
+        # ====================================================
+
         data["create_user_id"] = user_id
         data["create_user_name"] = user_name
         data["create_dept_name"] = dept_name
         data["create_mine_name"] = mine_name
 
-
         print()
+
         print("=" * 60)
         print("开始导入题目到数据库")
         print("=" * 60)
 
-        # ----------------------------------------------------
-        # 参数检查
-        # ----------------------------------------------------
+        # ====================================================
+        # 4. 参数检查
+        # ====================================================
 
         if not isinstance(data, dict):
 
@@ -1976,9 +2017,9 @@ def import_questions_to_db(
                 }
             )
 
-        # ----------------------------------------------------
-        # 获取题目
-        # ----------------------------------------------------
+        # ====================================================
+        # 5. 获取题目
+        # ====================================================
 
         questions = data.get(
             "questions",
@@ -1998,9 +2039,9 @@ def import_questions_to_db(
                 }
             )
 
-        # ----------------------------------------------------
-        # 数量检查
-        # ----------------------------------------------------
+        # ====================================================
+        # 6. 数量检查
+        # ====================================================
 
         if len(questions) == 0:
 
@@ -2017,23 +2058,27 @@ def import_questions_to_db(
             f"准备导入：{len(questions)} 道题"
         )
 
-        # ----------------------------------------------------
-        # 导入数据库模块
-        # ----------------------------------------------------
+        # ====================================================
+        # 7. 导入数据库模块
+        # ====================================================
 
         import import_questions_db
 
-        # ----------------------------------------------------
-        # 调用导入函数
-        # ----------------------------------------------------
+        # ====================================================
+        # 8. 调用 Java 导入函数
+        #
+        # 关键：
+        # 把当前 Java Token 传进去
+        # ====================================================
 
         result = import_questions_db.main(
-            data=data
+            data=data,
+            java_token=java_token
         )
 
-        # ----------------------------------------------------
-        # 检查返回
-        # ----------------------------------------------------
+        # ====================================================
+        # 9. 检查返回
+        # ====================================================
 
         if result is None:
 
@@ -2045,25 +2090,39 @@ def import_questions_to_db(
                 }
             )
 
-        # ----------------------------------------------------
-        # 返回结果
-        # ----------------------------------------------------
+        # ====================================================
+        # 10. 返回结果
+        # ====================================================
 
         print()
+
         print("=" * 60)
         print("导入完成")
         print()
-        print(f"处理：{result.get('total', 0)} 道")
-        print(f"成功：{result.get('inserted', 0)} 道")
-        print(f"跳过：{result.get('skipped', 0)} 道")
+        print(
+            f"处理：{result.get('total', 0)} 道"
+        )
+        print(
+            f"成功：{result.get('inserted', 0)} 道"
+        )
+        print(
+            f"跳过：{result.get('skipped', 0)} 道"
+        )
         print("=" * 60)
         print()
 
         return {
             "success": True,
-            "message": f"成功导入 {result.get('inserted', 0)} 道题",
+            "message": (
+                f"成功导入 "
+                f"{result.get('inserted', 0)} 道题"
+            ),
             "data": result
         }
+
+    # ========================================================
+    # 11. 找不到导入模块
+    # ========================================================
 
     except ModuleNotFoundError as e:
 
@@ -2075,24 +2134,36 @@ def import_questions_to_db(
             status_code=500,
             content={
                 "success": False,
-                "message": "找不到 import_questions_db.py，请检查文件是否存在"
+                "message": (
+                    "找不到 import_questions_db.py，"
+                    "请检查文件是否存在"
+                )
             }
         )
+
+    # ========================================================
+    # 12. 其他异常
+    # ========================================================
 
     except Exception as e:
 
         print()
+
         print("=" * 60)
         print("导入数据库失败")
         print("=" * 60)
+
         print(e)
+
         print()
 
         return JSONResponse(
             status_code=500,
             content={
                 "success": False,
-                "message": f"导入数据库失败：{e}"
+                "message": (
+                    f"导入数据库失败：{e}"
+                )
             }
         )
 
@@ -2105,50 +2176,84 @@ def import_questions_to_db(
 # ============================================================
 
 @app.get("/api/dept/list")
-def get_dept_list():
+def get_dept_list(request: Request):
     """
     从 Java 后端获取题库分类列表（包含层级结构）
+    根据当前 Java 登录用户所在矿井过滤分类
     """
     try:
         import requests
-        
-        # 从环境变量读取Java后端地址，支持Docker容器间通信
+
+        user = request.session.get("user")
+
+        print("当前用户:", user.get("user_name"))
+        print("当前部门:", user.get("subjection_name"))
+        print("当前矿井ID:", user.get("register_dept_id"))
+        print("当前矿井:", user.get("register_dept_name"))
+
+        # 从环境变量读取 Java 后端地址
         java_host = os.environ.get('JAVA_HOST', 'localhost')
         java_port = os.environ.get('JAVA_PORT', '1100')
-        java_api_url = f"http://{java_host}:{java_port}/deptBankType/getExcelTypeSelectPy"
-        
+
+        # 改为调用原来的登录接口
+        java_api_url = (
+            f"http://{java_host}:{java_port}"
+            f"/deptBankType/getExcelTypeSelect"
+        )
+
         print(f"🔗 连接 Java 后端：{java_api_url}")
-        
-        # 后端加了 @SaIgnore 后，不需要 token 了
+
+        # 获取当前 Python Session 中保存的 Java Token
+        java_token = request.session.get("java_token")
+
+        if not java_token:
+            print("❌ 当前 Python Session 没有 Java Token")
+
+            return {
+                "success": False,
+                "message": "Java登录状态已失效，请重新进入通用法规 AI",
+                "data": []
+            }
+
+        print("✅ 当前 Java Token：已获取")
+
+        # 携带 Java Token 调用原接口
         response = requests.get(
             java_api_url,
             timeout=10,
-            headers={"Content-Type": "application/json"}
+            headers={
+                "Content-Type": "application/json",
+                "satoken": java_token
+            }
         )
-        
+        print("Java HTTP状态:", response.status_code)
+        print("Java原始返回:")
+        print(response.text[:5000])
+
         if response.status_code == 200:
-            # 后端直接返回数组，不是包一层对象
+
+            # Java 原接口直接返回数组
             data = response.json()
-            
-            # 兼容处理：如果是字典且有 data 字段，取 data；如果是数组，直接用
+
             if isinstance(data, dict):
                 items = data.get("data", [])
             else:
                 items = data
-            
+
             # 构建树形结构
             dept_list = []
             dept_map = {}
-            
+
             # 先全部转换为字典
             for item in items:
+
                 dept_id = item.get("id")
-                
-                # ✅ 修复：parentId 可能是 "0" 或 null，需要统一处理
+
                 parent_id = item.get("parentId") or ""
+
                 if parent_id == "0":
                     parent_id = ""
-                
+
                 dept_map[dept_id] = {
                     "id": dept_id,
                     "name": item.get("name"),
@@ -2158,178 +2263,69 @@ def get_dept_list():
                     "superiorName": item.get("superiorName"),
                     "subjectionId": item.get("subjectionId"),
                     "subjectionName": item.get("subjectionName"),
-                    # ✅ 修复：isMine 可能是 null，需要统一为 0
                     "isMine": item.get("isMine") or 0,
                     "children": []
                 }
-            
+
             # 构建层级关系
             root_list = []
+
             for dept_id, dept in dept_map.items():
+
                 parent_id = dept["parentId"]
+
                 if parent_id and parent_id in dept_map:
                     dept_map[parent_id]["children"].append(dept)
                 else:
                     root_list.append(dept)
-            
-            print(f"✅ 成功获取分类数据：{len(root_list)} 个根节点")
+
+            print(
+                f"✅ 成功获取当前用户矿井分类："
+                f"{len(root_list)} 个根节点"
+            )
+
             return {
                 "success": True,
                 "data": root_list
             }
+
         else:
-            # 后端返回错误，使用本地缓存
-            print(f"⚠️ Java 返回错误：{response.status_code}，使用本地缓存")
+
+            print(
+                f"⚠️ Java 返回错误："
+                f"{response.status_code}"
+            )
+
+            # 这里建议不要再使用本地假数据
+            # 否则 Java Token 失效后可能看到错误矿井的数据
             return {
-                "success": True,
-                "message": f"获取分类失败：HTTP {response.status_code}，使用本地缓存",
-                "data": get_local_dept_list()
+                "success": False,
+                "message": (
+                    f"获取分类失败：HTTP "
+                    f"{response.status_code}"
+                ),
+                "data": []
             }
-            
+
     except requests.exceptions.ConnectionError:
-        print("❌ Java 后端未连接，使用本地缓存数据")
+
+        print("❌ Java 后端未连接")
+
         return {
-            "success": True,
-            "message": "Java 后端未连接，使用本地缓存数据",
-            "data": get_local_dept_list()
-        }
-        
-    except Exception as e:
-        print(f"❌ 获取分类异常：{e}")
-        return {
-            "success": True,
-            "message": f"获取分类失败：{str(e)}",
-            "data": get_local_dept_list()
+            "success": False,
+            "message": "Java 后端未连接",
+            "data": []
         }
 
-def get_local_dept_list():
-    """
-    本地分类数据（当 Java 后端不可用时使用）
-    """
-    return [
-        {
-            "id": "1",
-            "name": "鑫隆煤业",
-            "code": "xlmy",
-            "parentId": "",
-            "superiorId": "",
-            "superiorName": "",
-            "subjectionId": "001",
-            "subjectionName": "鑫隆煤业",
-            "isMine": 1,
-            "children": [
-                {
-                    "id": "101",
-                    "name": "抽采工",
-                    "code": "ccg",
-                    "parentId": "1",
-                    "superiorId": "1",
-                    "superiorName": "鑫隆煤业",
-                    "subjectionId": "001",
-                    "subjectionName": "鑫隆煤业",
-                    "isMine": 1,
-                    "children": []
-                },
-                {
-                    "id": "102",
-                    "name": "泵站值班员",
-                    "code": "bzzby",
-                    "parentId": "1",
-                    "superiorId": "1",
-                    "superiorName": "鑫隆煤业",
-                    "subjectionId": "001",
-                    "subjectionName": "鑫隆煤业",
-                    "isMine": 1,
-                    "children": []
-                },
-                {
-                    "id": "103",
-                    "name": "观察工",
-                    "code": "gcg",
-                    "parentId": "1",
-                    "superiorId": "1",
-                    "superiorName": "鑫隆煤业",
-                    "subjectionId": "001",
-                    "subjectionName": "鑫隆煤业",
-                    "isMine": 1,
-                    "children": []
-                },
-                {
-                    "id": "104",
-                    "name": "探水",
-                    "code": "ts",
-                    "parentId": "1",
-                    "superiorId": "1",
-                    "superiorName": "鑫隆煤业",
-                    "subjectionId": "001",
-                    "subjectionName": "鑫隆煤业",
-                    "isMine": 1,
-                    "children": [
-                        {
-                            "id": "1041",
-                            "name": "探水工",
-                            "code": "tsg",
-                            "parentId": "104",
-                            "superiorId": "1",
-                            "superiorName": "鑫隆煤业",
-                            "subjectionId": "001",
-                            "subjectionName": "鑫隆煤业",
-                            "isMine": 1,
-                            "children": []
-                        }
-                    ]
-                },
-                {
-                    "id": "105",
-                    "name": "地面机电队",
-                    "code": "dmjdd",
-                    "parentId": "1",
-                    "superiorId": "1",
-                    "superiorName": "鑫隆煤业",
-                    "subjectionId": "001",
-                    "subjectionName": "鑫隆煤业",
-                    "isMine": 1,
-                    "children": []
-                },
-                {
-                    "id": "106",
-                    "name": "监控信息",
-                    "code": "jkxx",
-                    "parentId": "1",
-                    "superiorId": "1",
-                    "superiorName": "鑫隆煤业",
-                    "subjectionId": "001",
-                    "subjectionName": "鑫隆煤业",
-                    "isMine": 1,
-                    "children": []
-                },
-                {
-                    "id": "107",
-                    "name": "安全管理人员",
-                    "code": "aqglry",
-                    "parentId": "1",
-                    "superiorId": "1",
-                    "superiorName": "鑫隆煤业",
-                    "subjectionId": "001",
-                    "subjectionName": "鑫隆煤业",
-                    "isMine": 1,
-                    "children": []
-                },
-                {
-                    "id": "108",
-                    "name": "通风机房",
-                    "code": "tffj",
-                    "parentId": "1",
-                    "superiorId": "1",
-                    "superiorName": "鑫隆煤业",
-                    "subjectionId": "001",
-                    "subjectionName": "鑫隆煤业",
-                    "isMine": 1,
-                    "children": []
-                }
-            ]
+    except Exception as e:
+
+        print(f"❌ 获取分类异常：{e}")
+
+        return {
+            "success": False,
+            "message": f"获取分类失败：{str(e)}",
+            "data": []
         }
-    ]
 
     
 # ============================================================

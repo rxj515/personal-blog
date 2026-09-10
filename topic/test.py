@@ -1,26 +1,33 @@
 import requests
 
-token = "gwCdrjJyaQCC5mKafh18AnErzwf8bWxeR19FwDC1w1GPCOsapuJyHMVr4XLHK8S0"
-url = "http://localhost:60853/deptBankType/getExcelTypeSelect"
+url = "http://localhost:1100/deptBankManage/python/import"
 
-# 测试不同的 Header 名称
-headers_list = {
-    "satoken": {"Content-Type": "application/json", "satoken": token},
-    "token": {"Content-Type": "application/json", "token": token},
-    "Authorization": {"Content-Type": "application/json", "Authorization": token},
-    "Bearer": {"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
-    "Cookie": {"Cookie": f"satoken={token}"},
+data = {
+    "dept": {
+        "id": "test-dept-002",
+        "fullName": "测试分类11"
+    },
+    "create_user_id": "test2",
+    "create_user_name": "测试用户333",
+    "questions": [
+        {
+            "question_type": "单选题",
+            "title": "Python本地接口测试题，请删除",
+            "plan_a": "选项A",
+            "plan_b": "选项B",
+            "plan_c": "选项C",
+            "plan_d": "选项D",
+            "answer": "A",
+            "analysis": "这是本地Python接口测试解析"
+        }
+    ]
 }
 
-for name, headers in headers_list.items():
-    try:
-        response = requests.get(url, headers=headers, timeout=5)
-        print(f"【{name}】 状态码: {response.status_code}")
-        print(f"   响应内容: {response.text[:300]}")
-        print("-" * 60)
-        
-        if response.status_code == 200:
-            print(f"✅ 成功！使用 {name} 头可以访问！")
-            break
-    except Exception as e:
-        print(f"【{name}】 请求出错: {e}")
+response = requests.post(
+    url,
+    json=data,
+    timeout=120
+)
+
+print(response.status_code)
+print(response.json())
