@@ -239,25 +239,47 @@
 
 
 
-        <div class="menu-item"
-             data-page="system">
+        <!-- 系统设置 -->
+<div class="menu-item system-menu-parent"
+     data-page="system">
+
+    <span class="menu-icon">
+        ⚙
+    </span>
+
+    <span>
+        系统设置
+    </span>
+
+    <span class="menu-arrow">
+        ›
+    </span>
+
+</div>
 
 
-            <span class="menu-icon">
-
-                ⚙
-
-            </span>
 
 
-            <span>
 
-                系统设置
+<!-- 系统设置子菜单 -->
+<div class="submenu">
+    <div
+        class="menu-item submenu-item"
+        data-page="account"
+        id="account-menu-item"
+        onclick="event.stopPropagation()"
+    >
+        <span class="menu-icon">
+            👤
+        </span>
 
-            </span>
+        <span>
+            账户管理
+        </span>
+    </div>
+</div>
 
 
-        </div>
 
 
 
@@ -285,11 +307,11 @@
                     加载中...
                 </div>
     
-                <div class="user-meta">
+                <!-- <div class="user-meta">
                     <span id="current-user-dept">--</span>
                     <span class="meta-divider">·</span>
                     <span id="current-user-mine">--</span>
-                </div>
+                </div> -->
     
             </div>
     

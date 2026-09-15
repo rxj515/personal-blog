@@ -847,3 +847,52 @@ body {
     }
 
 }
+
+
+/* =========================================================
+   系统设置子菜单
+   ========================================================= */
+
+/* 系统设置父菜单 */
+.system-menu-parent {
+    position: relative;
+}
+
+/* 右侧箭头 */
+.menu-arrow {
+    margin-left: auto;
+    font-size: 16px;
+    line-height: 1;
+    transition: transform 0.2s ease;
+}
+
+/* 展开后箭头向下 */
+.system-menu-parent.expanded .menu-arrow {
+    transform: rotate(90deg);
+}
+
+/* 子菜单默认隐藏 */
+.submenu {
+    display: none;
+    margin: 0 0 4px 18px;
+}
+
+/* 子菜单展开 */
+.submenu.open {
+    display: block;
+}
+
+/* 子菜单项目 */
+.submenu-item {
+    height: 42px;
+    margin-bottom: 6px;
+    padding-left: 14px !important;
+    font-size: 14px;
+}
+
+/* 子菜单图标稍微小一点 */
+.submenu-item .menu-icon {
+    width: 26px;
+    height: 26px;
+    font-size: 13px;
+}

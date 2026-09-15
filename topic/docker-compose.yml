@@ -1,20 +1,49 @@
 services:
   web:
     build: .
+
     container_name: pdf-app
+
+    # 只允许服务器本机访问 8765
+    # 外部用户通过 Nginx 的 HTTPS 访问
     ports:
-      - "8765:8765"
+      - "127.0.0.1:8765:8765"
+
     environment:
-      - PORT=8765
-      - DEBUG=false
-      - JAVA_HOST=host.docker.internal
-      - JAVA_PORT=1100
-      - TZ=Asia/Shanghai
-      - LANG=zh_CN.UTF-8
-      - LC_ALL=zh_CN.UTF-8
-      - LANGUAGE=zh_CN:zh
+      # =========================
+      # Python 服务
+      # =========================
+      PORT: "8765"
+      DEBUG: "false"
+      TZ: "Asia/Shanghai"
+
+      # =========================
+      # Session 安全密钥
+      # 从服务器 .env 读取
+      # 不要把真实密钥写在这里
+      # =========================
+      SESSION_SECRET_KEY: "${SESSION_SECRET_KEY}"
+
+      # =========================
+      # Java
+      # =========================
+      JAVA_HOST: "host.docker.internal"
+      JAVA_PORT: "1100"
+
+      # =========================
+      # 中文环境
+      # =========================
+      LANG: "zh_CN.UTF-8"
+      LC_ALL: "zh_CN.UTF-8"
+      LANGUAGE: "zh_CN:zh"
+
+    # Docker 容器访问宿主机 Java
     extra_hosts:
       - "host.docker.internal:host-gateway"
+
+    # =========================
+    # 数据持久化
+    # =========================
     volumes:
       - ./data:/app/data
       - ./pdf:/app/pdf
@@ -23,7 +52,15 @@ services:
       - ./static:/app/static
       - ./templates:/app/templates
       - ./logs:/app/logs
+
+    # =========================
+    # 自动重启
+    # =========================
     restart: unless-stopped
+
+    # =========================
+    # Docker 日志限制
+    # =========================
     logging:
       driver: "json-file"
       options:

@@ -53,11 +53,24 @@ const App = {
             js: '/static/js/question_bank.js'
         },
 
+        // system: {
+        //     url: '/system',
+        //     title: '系统设置',
+        //     css: '/static/css/system.css',
+        //     js: '/static/js/system.js'
+        // }
         system: {
             url: '/system',
             title: '系统设置',
             css: '/static/css/system.css',
             js: '/static/js/system.js'
+        },
+
+        account: {
+            url: '/account',
+            title: '账户管理',
+            css: '/static/css/account_admin.css',
+            js: '/static/js/account_admin.js'
         }
     },
 
@@ -78,62 +91,60 @@ const App = {
      */
 
     init() {
-
         console.log('App 初始化');
-
+    
         this.bindMenu();
-
+    
         this.updateTime();
-
+    
         setInterval(() => {
-
             this.updateTime();
-
         }, 1000);
-
-         // 加载当前登录用户
+    
+        // 加载当前登录用户
         this.loadCurrentUser();
-
+    
         // 加载AI配置
         this.loadAIStatus();
-
+    
         this.loadGlobalAIConfig();
-
+    
         this.loadPage('dashboard');
+    
         this.updateKnowledgeCount();
-        // ✅ 监听 AI 配置变化事件
+    
+        // 监听 AI 配置变化事件
         document.addEventListener(
             "aiConfigChanged",
             () => {
-
                 console.log(
                     "App 收到配置变化事件，刷新侧边栏"
                 );
-
+    
                 this.updateSidebarAI();
-
-                // ✅ 如果当前在系统设置页面，重新加载页面内容
+    
                 if (this.currentPage === 'system') {
-
                     console.log(
                         "当前在系统设置页面，重新加载页面内容"
                     );
-
-                    // 重新加载 system 页面
+    
                     this.loadPage('system');
-
                 }
-
             }
         );
-        // ✅ 新增：监听知识库更新事件
-    document.addEventListener('knowledgeUpdated', () => {
-        console.log('📨 收到知识库更新通知，刷新侧边栏数量');
-        this.updateKnowledgeCount();
-    });
-
+    
+        // 监听知识库更新事件
+        document.addEventListener(
+            'knowledgeUpdated',
+            () => {
+                console.log(
+                    '📨 收到知识库更新通知，刷新侧边栏数量'
+                );
+    
+                this.updateKnowledgeCount();
+            }
+        );
     },
-
 
     // =====================================================
     // 获取当前登录用户
@@ -301,32 +312,99 @@ const App = {
      * =====================================================
      */
 
+    // bindMenu() {
+
+    //     document
+    //         .querySelectorAll('[data-page]')
+    //         .forEach(item => {
+
+    //             item.addEventListener(
+    //                 'click',
+    //                 () => {
+
+    //                     const page =
+    //                         item.dataset.page;
+
+    //                     console.log(
+    //                         '点击菜单：',
+    //                         page
+    //                     );
+
+    //                     this.loadPage(page);
+    //                 }
+    //             );
+
+    //         });
+    // },
+
+
+
     bindMenu() {
 
-        document
-            .querySelectorAll('[data-page]')
-            .forEach(item => {
-
-                item.addEventListener(
-                    'click',
-                    () => {
-
-                        const page =
-                            item.dataset.page;
-
-                        console.log(
-                            '点击菜单：',
-                            page
-                        );
-
-                        this.loadPage(page);
-                    }
+        // =====================================================
+        // 系统设置
+        // 点击系统设置：
+        // 1. 展开/收起账户管理
+        // 2. 保留原来的系统设置页面加载功能
+        // =====================================================
+        const systemMenu =
+            document.querySelector('.system-menu-parent');
+    
+        const submenu =
+            document.querySelector('.submenu');
+    
+        if (systemMenu && submenu) {
+    
+            systemMenu.addEventListener('click', (event) => {
+    
+                event.stopPropagation();
+    
+                // 展开 / 收起子菜单
+                const isOpen =
+                    submenu.classList.toggle('open');
+    
+                systemMenu.classList.toggle(
+                    'expanded',
+                    isOpen
                 );
-
+    
+                console.log(
+                    '系统设置：',
+                    isOpen ? '展开' : '收起'
+                );
+    
+                // 保留原来的系统设置页面功能
+                this.loadPage('system');
+            });
+        }
+    
+    
+        // =====================================================
+        // 其他菜单 + 账户管理
+        // =====================================================
+        document
+            .querySelectorAll(
+                '[data-page]:not(.system-menu-parent)'
+            )
+            .forEach(item => {
+    
+                item.addEventListener('click', (event) => {
+    
+                    event.stopPropagation();
+    
+                    const page =
+                        item.dataset.page;
+    
+                    console.log(
+                        '点击菜单：',
+                        page
+                    );
+    
+                    this.loadPage(page);
+                });
             });
     },
-
-
+    
     /*
      * =====================================================
      * 加载页面
@@ -773,6 +851,26 @@ const App = {
                 break;
 
 
+                // =====================================================
+                // 账户管理
+                // =====================================================
+                case 'account':
+                    if (
+                        typeof AccountAdmin !== 'undefined' &&
+                        typeof AccountAdmin.init === 'function'
+                    ) {
+                        console.log(
+                            '调用 AccountAdmin.init()'
+                        );
+                        AccountAdmin.init();
+                    } else {
+                        console.warn(
+                            'AccountAdmin.init 不存在'
+                        );
+                    }
+                    break;
+
+
             /*
              * =================================================
              * 默认
@@ -1164,6 +1262,89 @@ const App = {
             console.error('更新知识库数量失败：', error);
         }
     },
+
+
+    // =====================================================
+    // 管理员菜单权限
+    // =====================================================
+    async updateAdminMenu() {
+
+        const accountMenu =
+            document.getElementById(
+                "account-menu-item"
+            );
+
+        if (!accountMenu) {
+            return;
+        }
+
+        // 默认先隐藏
+        accountMenu.style.display = "none";
+
+        try {
+
+            const response =
+                await fetch(
+                    "/api/account/me",
+                    {
+                        method: "GET",
+                        credentials: "include",
+                        headers: {
+                            "Accept":
+                                "application/json"
+                        },
+                        cache: "no-store"
+                    }
+                );
+
+            if (!response.ok) {
+
+                console.warn(
+                    "获取管理员权限失败：",
+                    response.status
+                );
+
+                return;
+            }
+
+            const result =
+                await response.json();
+
+            if (
+                result &&
+                result.success &&
+                result.data &&
+                result.data.role === "管理员"
+            ) {
+
+                accountMenu.style.display = "";
+
+                console.log(
+                    "✅ 当前用户是管理员，显示账户管理"
+                );
+
+            } else {
+
+                accountMenu.style.display = "none";
+
+                console.log(
+                    "当前用户不是管理员，隐藏账户管理"
+                );
+            }
+
+        } catch (error) {
+
+            console.error(
+                "❌ 获取管理员权限失败：",
+                error
+            );
+
+            // 出错时保持隐藏
+            accountMenu.style.display = "none";
+        }
+    },
+
+
 
 
     // // =====================================================

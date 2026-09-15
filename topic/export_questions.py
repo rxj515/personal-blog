@@ -42,11 +42,8 @@ EXCEL_DIR = BASE_DIR / "excel"
 # =========================================================
 
 TEMPLATE_CANDIDATES = [
-    BASE_DIR / "导入模版 (1).xlsx",
-    BASE_DIR / "导入模版 (2).xlsx",
-    BASE_DIR / "导入模版.xlsx",
+    BASE_DIR / "import_template.xlsx",
 ]
-
 
 # =========================================================
 # 4. Excel配置

@@ -29,8 +29,7 @@ import os
 from pathlib import Path
 import asyncio
 
-from fastapi import FastAPI, Body, Request, UploadFile, File, Depends
-import shutil 
+from fastapi import FastAPI, Body, Request, UploadFile, File, Depends 
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -43,7 +42,16 @@ from ai_config import (
 
 import uvicorn
 
-from auth import require_login, get_current_user
+# from auth import require_login, get_current_user
+
+from auth import (
+    require_login,
+    get_current_user,
+    _load_users,
+    _save_users,
+    make_password_hash,
+    MIN_PASSWORD_LENGTH
+)
 
 import secrets
 from starlette.middleware.sessions import SessionMiddleware
@@ -88,9 +96,6 @@ PAGES_DIR = TEMPLATES_DIR / "pages"
 # ============================================================
 # 4. 数据文件
 # ============================================================
-
-# 法规知识库
-KNOWLEDGE_FILE = DATA_DIR / "articles.json"
 
 # ✅ 新增：知识库目录（每个 PDF 独立存储）
 KNOWLEDGE_DIR = DATA_DIR / "knowledge"
@@ -198,10 +203,33 @@ templates = Jinja2Templates(
 # Session 中间件
 # ============================================================
 
-SECRET_KEY = os.environ.get(
-    'SESSION_SECRET_KEY',
-    secrets.token_urlsafe(32)
+# SECRET_KEY = os.environ.get(
+#     'SESSION_SECRET_KEY',
+#     secrets.token_urlsafe(32)
+# )
+
+# SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY")
+
+# if not SESSION_SECRET_KEY:
+#     raise RuntimeError(
+#         "生产环境必须设置 SESSION_SECRET_KEY 环境变量"
+#     )
+
+# SECRET_KEY = SESSION_SECRET_KEY
+
+
+
+
+# Session 固定密钥
+SESSION_SECRET_KEY = os.environ.get(
+    "SESSION_SECRET_KEY",
+    "dev-test-key-20260915-fixed"
 )
+
+SECRET_KEY = SESSION_SECRET_KEY
+
+
+
 
 
 # ============================================================
@@ -211,6 +239,70 @@ SECRET_KEY = os.environ.get(
 from starlette.middleware.base import BaseHTTPMiddleware
 
 
+# class LoginMiddleware(BaseHTTPMiddleware):
+
+#     async def dispatch(self, request: Request, call_next):
+
+#         path = request.url.path
+
+#         # ==========================================
+#         # 1. 不需要登录的地址
+#         # ==========================================
+#         # public_paths = [
+#         #     "/login",
+#         #     "/sso/login",
+#         #     "/favicon.ico",
+#         # ]
+#         public_paths = [
+#             "/login",
+#             "/favicon.ico",
+#         ]
+
+#         # ==========================================
+#         # 2. 静态资源放行
+#         # ==========================================
+#         if path.startswith("/static/"):
+#             return await call_next(request)
+
+#         # ==========================================
+#         # 3. 登录页、SSO入口放行
+#         # ==========================================
+#         if path in public_paths:
+#             return await call_next(request)
+
+#         # ==========================================
+#         # 4. 检查当前登录用户
+#         # ==========================================
+#         user = await get_current_user(request)
+
+#         # ==========================================
+#         # 5. 没有登录
+#         # ==========================================
+#         if not user:
+
+#             # API 返回 401
+#             if path.startswith("/api/"):
+#                 return JSONResponse(
+#                     status_code=401,
+#                     content={
+#                         "success": False,
+#                         "message": "未登录，请先登录"
+#                     }
+#                 )
+
+#             # 页面跳转到登录页
+#             return RedirectResponse(
+#                 url="/login",
+#                 status_code=303
+#             )
+
+#         # ==========================================
+#         # 6. 已登录
+#         # ==========================================
+#         return await call_next(request)
+
+
+
 class LoginMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
@@ -218,33 +310,32 @@ class LoginMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         # ==========================================
-        # 1. 不需要登录的地址
+        # 不需要登录的地址
         # ==========================================
         public_paths = [
             "/login",
-            "/sso/login",
             "/favicon.ico",
         ]
 
         # ==========================================
-        # 2. 静态资源放行
+        # 静态资源放行
         # ==========================================
         if path.startswith("/static/"):
             return await call_next(request)
 
         # ==========================================
-        # 3. 登录页、SSO入口放行
+        # 登录页放行
         # ==========================================
         if path in public_paths:
             return await call_next(request)
 
         # ==========================================
-        # 4. 检查当前登录用户
+        # 检查当前登录用户
         # ==========================================
         user = await get_current_user(request)
 
         # ==========================================
-        # 5. 没有登录
+        # 没有登录
         # ==========================================
         if not user:
 
@@ -258,18 +349,16 @@ class LoginMiddleware(BaseHTTPMiddleware):
                     }
                 )
 
-            # 页面跳转到登录页
+            # 页面跳转登录
             return RedirectResponse(
                 url="/login",
                 status_code=303
             )
 
         # ==========================================
-        # 6. 已登录
+        # 已登录
         # ==========================================
         return await call_next(request)
-
-
 
 # ============================================================
 # 注册中间件
@@ -278,11 +367,21 @@ class LoginMiddleware(BaseHTTPMiddleware):
 # 先注册 LoginMiddleware
 app.add_middleware(LoginMiddleware)
 
+# app.add_middleware(
+#     SessionMiddleware,
+#     secret_key=SECRET_KEY,
+#     session_cookie="session",
+#     max_age=3600 * 24 * 7,
+#     same_site="lax",
+#     https_only=False,
+#     path="/"
+# )
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
     session_cookie="session",
-    max_age=3600 * 24 * 7,
+    max_age=3600 * 12,
     same_site="lax",
     https_only=False,
     path="/"
@@ -387,14 +486,28 @@ def page_exists(page_name: str):
 # 12. 首页
 # ============================================================
 
-async def check_page_login(request: Request):
-    user = await get_current_user(request)
+# @app.get("/")
+# async def index(request: Request):
+#     user = await get_current_user(request)
 
-    if not user:
-        return RedirectResponse(url="/login")
+#     if not user:
+#         return RedirectResponse(
+#             url="/login",
+#             status_code=303
+#         )
 
-    return None
+#     return templates.TemplateResponse(
+#         "index.html",
+#         {"request": request}
+#     )
 
+# @app.get("/")
+# async def index(request: Request):
+#     return templates.TemplateResponse(
+#         "index.html",
+#         {"request": request}
+#     )
+    
 
 @app.get("/")
 async def index(request: Request):
@@ -410,6 +523,7 @@ async def index(request: Request):
         "index.html",
         {"request": request}
     )
+
 
 @app.get("/dashboard")
 async def dashboard(request: Request):
@@ -446,6 +560,851 @@ async def system(request: Request):
         "pages/system.html"
     )
 
+@app.get("/account")
+async def account(request: Request):
+    user = await get_current_user(request)
+
+    # 未登录
+    if not user:
+        return RedirectResponse(
+            url="/login",
+            status_code=303
+        )
+
+    # 普通用户禁止进入账户管理
+    if user.get("role") != "管理员":
+        return RedirectResponse(
+            url="/",
+            status_code=303
+        )
+
+    # 管理员正常进入
+    return await render_page(
+        request,
+        "pages/account_admin.html"
+    )
+
+# ============================================================
+# 账户管理 API
+# ============================================================
+
+
+def require_admin(request: Request):
+    """
+    检查当前登录用户是否为管理员
+
+    返回：
+        (True, user, None)       → 允许
+        (False, user, JSONResponse) → 拒绝
+    """
+
+    user = request.session.get("user")
+
+    if not user:
+        return (
+            False,
+            None,
+            JSONResponse(
+                status_code=401,
+                content={
+                    "success": False,
+                    "message": "未登录，请先登录"
+                }
+            )
+        )
+
+    role = user.get("role", "")
+
+    if role != "管理员":
+        return (
+            False,
+            user,
+            JSONResponse(
+                status_code=403,
+                content={
+                    "success": False,
+                    "message": "没有管理员权限"
+                }
+            )
+        )
+
+    return True, user, None
+
+
+# ============================================================
+# 1. 获取账户列表
+#
+# GET /api/account/list
+# ============================================================
+
+@app.get("/api/account/list")
+def account_list(request: Request):
+
+    try:
+
+        # ----------------------------------------------------
+        # 管理员权限检查
+        # ----------------------------------------------------
+
+        allowed, current_user, error_response = require_admin(request)
+
+        if not allowed:
+            return error_response
+
+        # ----------------------------------------------------
+        # 读取用户
+        # ----------------------------------------------------
+
+        users = _load_users()
+
+        result = []
+
+        for user in users:
+
+            if not isinstance(user, dict):
+                continue
+
+            # ------------------------------------------------
+            # ⚠️ 绝对不要返回 password_hash
+            # ------------------------------------------------
+
+            result.append({
+                "user_id": (
+                    user.get("user_id")
+                    or user.get("id")
+                    or ""
+                ),
+
+                "username": (
+                    user.get("username")
+                    or user.get("user_name")
+                    or ""
+                ),
+
+                "user_name": (
+                    user.get("user_name")
+                    or user.get("username")
+                    or ""
+                ),
+
+                "role": user.get(
+                    "role",
+                    "普通用户"
+                ),
+
+                "enabled": user.get(
+                    "enabled",
+                    True
+                ),
+
+                "created_at": user.get(
+                    "created_at"
+                ),
+
+                "last_login": user.get(
+                    "last_login"
+                )
+            })
+
+        return {
+            "success": True,
+            "message": "获取账户列表成功",
+            "data": result
+        }
+
+    except Exception as e:
+
+        print("获取账户列表失败：", e)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"获取账户列表失败：{e}"
+            }
+        )
+
+
+# ============================================================
+# 2. 创建账户
+#
+# POST /api/account/create
+#
+# 请求：
+# {
+#     "username": "test",
+#     "password": "xxxxxxxxxxxx",
+#     "enabled": true
+# }
+# ============================================================
+
+@app.post("/api/account/create")
+def account_create(
+    request: Request,
+    data: dict = Body(...)
+):
+
+    try:
+
+        # ----------------------------------------------------
+        # 管理员权限
+        # ----------------------------------------------------
+
+        allowed, current_user, error_response = require_admin(request)
+
+        if not allowed:
+            return error_response
+
+        # ----------------------------------------------------
+        # 参数检查
+        # ----------------------------------------------------
+
+        if not isinstance(data, dict):
+
+            return {
+                "success": False,
+                "message": "参数格式错误"
+            }
+
+        username = str(
+            data.get("username", "")
+        ).strip()
+
+        password = str(
+            data.get("password", "")
+        )
+
+        enabled = data.get(
+            "enabled",
+            True
+        )
+
+        # ----------------------------------------------------
+        # 用户名检查
+        # ----------------------------------------------------
+
+        if not username:
+
+            return {
+                "success": False,
+                "message": "请输入用户名"
+            }
+
+        if len(username) < 2:
+
+            return {
+                "success": False,
+                "message": "用户名至少2个字符"
+            }
+
+        if len(username) > 50:
+
+            return {
+                "success": False,
+                "message": "用户名不能超过50个字符"
+            }
+
+        # ----------------------------------------------------
+        # 密码检查
+        # ----------------------------------------------------
+
+        if not password:
+
+            return {
+                "success": False,
+                "message": "请输入密码"
+            }
+
+        if len(password) < MIN_PASSWORD_LENGTH:
+
+            return {
+                "success": False,
+                "message": (
+                    f"密码至少需要 "
+                    f"{MIN_PASSWORD_LENGTH} 位"
+                )
+            }
+
+        # ----------------------------------------------------
+        # 读取现有账户
+        # ----------------------------------------------------
+
+        users = _load_users()
+
+        # ----------------------------------------------------
+        # 检查用户名是否已经存在
+        # ----------------------------------------------------
+
+        for user in users:
+
+            if not isinstance(user, dict):
+                continue
+
+            old_username = (
+                user.get("username")
+                or user.get("user_name")
+                or ""
+            )
+
+            if old_username.lower() == username.lower():
+
+                return {
+                    "success": False,
+                    "message": f"用户名已存在：{username}"
+                }
+
+        # ----------------------------------------------------
+        # 生成用户ID
+        # ----------------------------------------------------
+
+        import uuid
+        from datetime import datetime
+
+        user_id = (
+            "python-"
+            + uuid.uuid4().hex
+        )
+
+        now = datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+        # ----------------------------------------------------
+        # 生成密码Hash
+        #
+        # 使用 auth.py 原有算法
+        # ----------------------------------------------------
+
+        password_hash = make_password_hash(
+            password
+        )
+
+        # ----------------------------------------------------
+        # 创建用户
+        # ----------------------------------------------------
+
+        new_user = {
+            "user_id": user_id,
+            "username": username,
+            "user_name": username,
+
+            # 新创建账户固定普通用户
+            "role": "普通用户",
+
+            "enabled": bool(enabled),
+
+            "password_hash": password_hash,
+
+            "created_at": now,
+            "last_login": None
+        }
+
+        # ----------------------------------------------------
+        # 保存
+        # ----------------------------------------------------
+
+        users.append(new_user)
+
+        _save_users(users)
+
+        print()
+        print("=" * 60)
+        print("创建账户成功")
+        print("=" * 60)
+        print("用户ID :", user_id)
+        print("用户名 :", username)
+        print("角色   : 普通用户")
+        print("状态   :", "启用" if enabled else "禁用")
+        print("=" * 60)
+        print()
+
+        return {
+            "success": True,
+            "message": f"账户创建成功：{username}",
+            "data": {
+                "user_id": user_id,
+                "username": username,
+                "user_name": username,
+                "role": "普通用户",
+                "enabled": bool(enabled),
+                "created_at": now,
+                "last_login": None
+            }
+        }
+
+    except ValueError as e:
+
+        return {
+            "success": False,
+            "message": str(e)
+        }
+
+    except Exception as e:
+
+        print("创建账户失败：", e)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"创建账户失败：{e}"
+            }
+        )
+
+
+# ============================================================
+# 3. 修改密码
+#
+# POST /api/account/password
+#
+# 请求：
+# {
+#     "user_id": "...",
+#     "password": "xxxxxxxxxxxx"
+# }
+# ============================================================
+
+@app.post("/api/account/password")
+def account_password(
+    request: Request,
+    data: dict = Body(...)
+):
+
+    try:
+
+        # ----------------------------------------------------
+        # 管理员权限
+        # ----------------------------------------------------
+
+        allowed, current_user, error_response = require_admin(request)
+
+        if not allowed:
+            return error_response
+
+        # ----------------------------------------------------
+        # 参数
+        # ----------------------------------------------------
+
+        if not isinstance(data, dict):
+
+            return {
+                "success": False,
+                "message": "参数格式错误"
+            }
+
+        user_id = str(
+            data.get("user_id", "")
+        ).strip()
+
+        password = str(
+            data.get("password", "")
+        )
+
+        if not user_id:
+
+            return {
+                "success": False,
+                "message": "缺少 user_id"
+            }
+
+        if not password:
+
+            return {
+                "success": False,
+                "message": "请输入新密码"
+            }
+
+        if len(password) < MIN_PASSWORD_LENGTH:
+
+            return {
+                "success": False,
+                "message": (
+                    f"密码至少需要 "
+                    f"{MIN_PASSWORD_LENGTH} 位"
+                )
+            }
+
+        # ----------------------------------------------------
+        # 读取用户
+        # ----------------------------------------------------
+
+        users = _load_users()
+
+        target_user = None
+
+        for user in users:
+
+            if not isinstance(user, dict):
+                continue
+
+            current_id = (
+                user.get("user_id")
+                or user.get("id")
+                or ""
+            )
+
+            if current_id == user_id:
+
+                target_user = user
+                break
+
+        if target_user is None:
+
+            return {
+                "success": False,
+                "message": "账户不存在"
+            }
+
+        # ----------------------------------------------------
+        # 修改密码
+        # ----------------------------------------------------
+
+        target_user["password_hash"] = (
+            make_password_hash(password)
+        )
+
+        # ----------------------------------------------------
+        # 保存
+        # ----------------------------------------------------
+
+        _save_users(users)
+
+        username = (
+            target_user.get("username")
+            or target_user.get("user_name")
+            or user_id
+        )
+
+        print(
+            f"✅ 管理员修改账户密码：{username}"
+        )
+
+        return {
+            "success": True,
+            "message": "密码修改成功"
+        }
+
+    except ValueError as e:
+
+        return {
+            "success": False,
+            "message": str(e)
+        }
+
+    except Exception as e:
+
+        print("修改密码失败：", e)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"修改密码失败：{e}"
+            }
+        )
+
+
+# ============================================================
+# 4. 启用 / 禁用账户
+#
+# POST /api/account/status
+#
+# 请求：
+# {
+#     "user_id": "...",
+#     "enabled": false
+# }
+# ============================================================
+
+@app.post("/api/account/status")
+def account_status(
+    request: Request,
+    data: dict = Body(...)
+):
+
+    try:
+
+        # ----------------------------------------------------
+        # 管理员权限
+        # ----------------------------------------------------
+
+        allowed, current_user, error_response = require_admin(request)
+
+        if not allowed:
+            return error_response
+
+        if not isinstance(data, dict):
+
+            return {
+                "success": False,
+                "message": "参数格式错误"
+            }
+
+        user_id = str(
+            data.get("user_id", "")
+        ).strip()
+
+        enabled = data.get(
+            "enabled"
+        )
+
+        if not user_id:
+
+            return {
+                "success": False,
+                "message": "缺少 user_id"
+            }
+
+        if not isinstance(enabled, bool):
+
+            return {
+                "success": False,
+                "message": "enabled 参数必须是 true 或 false"
+            }
+
+        # ----------------------------------------------------
+        # 读取用户
+        # ----------------------------------------------------
+
+        users = _load_users()
+
+        target_user = None
+
+        for user in users:
+
+            if not isinstance(user, dict):
+                continue
+
+            current_id = (
+                user.get("user_id")
+                or user.get("id")
+                or ""
+            )
+
+            if current_id == user_id:
+
+                target_user = user
+                break
+
+        if target_user is None:
+
+            return {
+                "success": False,
+                "message": "账户不存在"
+            }
+
+        # ----------------------------------------------------
+        # 管理员账户禁止禁用
+        # ----------------------------------------------------
+
+        if target_user.get("role") == "管理员" and not enabled:
+
+            return {
+                "success": False,
+                "message": "管理员账户不能被禁用"
+            }
+
+        # ----------------------------------------------------
+        # 修改状态
+        # ----------------------------------------------------
+
+        target_user["enabled"] = enabled
+
+        _save_users(users)
+
+        username = (
+            target_user.get("username")
+            or target_user.get("user_name")
+            or user_id
+        )
+
+        print(
+            f"✅ 修改账户状态："
+            f"{username} → "
+            f"{'启用' if enabled else '禁用'}"
+        )
+
+        return {
+            "success": True,
+            "message": (
+                "账户已启用"
+                if enabled
+                else "账户已禁用"
+            ),
+            "data": {
+                "user_id": user_id,
+                "enabled": enabled
+            }
+        }
+
+    except Exception as e:
+
+        print("修改账户状态失败：", e)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"修改账户状态失败：{e}"
+            }
+        )
+
+
+# ============================================================
+# 5. 删除账户
+#
+# POST /api/account/delete
+#
+# 请求：
+# {
+#     "user_id": "..."
+# }
+# ============================================================
+
+@app.post("/api/account/delete")
+def account_delete(
+    request: Request,
+    data: dict = Body(...)
+):
+
+    try:
+
+        # ----------------------------------------------------
+        # 管理员权限
+        # ----------------------------------------------------
+
+        allowed, current_user, error_response = require_admin(request)
+
+        if not allowed:
+            return error_response
+
+        if not isinstance(data, dict):
+
+            return {
+                "success": False,
+                "message": "参数格式错误"
+            }
+
+        user_id = str(
+            data.get("user_id", "")
+        ).strip()
+
+        if not user_id:
+
+            return {
+                "success": False,
+                "message": "缺少 user_id"
+            }
+
+        # ----------------------------------------------------
+        # 当前登录管理员 ID
+        # ----------------------------------------------------
+
+        current_user_id = (
+            current_user.get("user_id")
+            or current_user.get("id")
+            or ""
+        )
+
+        # ----------------------------------------------------
+        # 读取账户
+        # ----------------------------------------------------
+
+        users = _load_users()
+
+        target_user = None
+
+        for user in users:
+
+            if not isinstance(user, dict):
+                continue
+
+            current_id = (
+                user.get("user_id")
+                or user.get("id")
+                or ""
+            )
+
+            if current_id == user_id:
+
+                target_user = user
+                break
+
+        if target_user is None:
+
+            return {
+                "success": False,
+                "message": "账户不存在"
+            }
+
+        # ----------------------------------------------------
+        # 禁止删除自己
+        # ----------------------------------------------------
+
+        if user_id == current_user_id:
+
+            return {
+                "success": False,
+                "message": "不能删除当前登录账户"
+            }
+
+        # ----------------------------------------------------
+        # 禁止删除管理员
+        # ----------------------------------------------------
+
+        if target_user.get("role") == "管理员":
+
+            return {
+                "success": False,
+                "message": "管理员账户不能删除"
+            }
+
+        # ----------------------------------------------------
+        # 删除
+        # ----------------------------------------------------
+
+        username = (
+            target_user.get("username")
+            or target_user.get("user_name")
+            or user_id
+        )
+
+        users = [
+            user
+            for user in users
+            if not (
+                isinstance(user, dict)
+                and (
+                    user.get("user_id")
+                    or user.get("id")
+                    or ""
+                ) == user_id
+            )
+        ]
+
+        _save_users(users)
+
+        print(
+            f"✅ 删除账户成功：{username}"
+        )
+
+        return {
+            "success": True,
+            "message": f"账户已删除：{username}"
+        }
+
+    except Exception as e:
+
+        print("删除账户失败：", e)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"删除账户失败：{e}"
+            }
+        )
+        
 
 # ============================================================
 # 18. 系统配置 API
@@ -753,9 +1712,6 @@ def system_info():
             "pdf_dir":
                 str(PDF_DIR),
 
-            "knowledge_file":
-                str(KNOWLEDGE_FILE),
-
             "ai_config_file":
                 str(AI_CONFIG_FILE),
 
@@ -818,86 +1774,6 @@ def update_knowledge():
             "message": f"更新失败：{e}"
         }
 
-
-# ============================================================
-# 25. 读取法规知识库
-#
-# GET /api/knowledge/data
-# ============================================================
-
-@app.get("/api/knowledge/data")
-def get_knowledge_data(source: str = None):
-    """
-    获取知识库数据
-    - source: PDF名称（不传则返回所有合并）
-    """
-    try:
-        # 如果没有指定 source，返回所有合并
-        if not source:
-            all_data = []
-            for dir_path in KNOWLEDGE_DIR.iterdir():
-                if dir_path.is_dir():
-                    json_file = dir_path / "articles.json"
-                    if json_file.exists():
-                        with open(json_file, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                            if isinstance(data, list):
-                                all_data.extend(data)
-            # 过滤有效条文
-            article_data = [
-                item for item in all_data
-                if isinstance(item, dict)
-                and item.get("article")
-                and item.get("content")
-            ]
-            return {
-                "success": True,
-                "message": "读取成功",
-                "count": len(article_data),
-                "data": article_data
-            }
-        
-        # 指定了 source，读取对应的知识库
-        json_file = KNOWLEDGE_DIR / source / "articles.json"
-        if not json_file.exists():
-            return {
-                "success": True,
-                "data": [],
-                "count": 0
-            }
-        
-        with open(json_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        
-        # 过滤有效条文
-        article_data = [
-            item for item in data
-            if isinstance(item, dict)
-            and item.get("article")
-            and item.get("content")
-        ]
-        
-        return {
-            "success": True,
-            "message": "读取成功",
-            "count": len(article_data),
-            "data": article_data,
-            "source": source
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"读取知识库失败：{e}",
-            "count": 0,
-            "data": []
-        }
-
-
-# ============================================================
-# ✅ 新增：获取知识库来源列表
-# GET /api/knowledge/sources
-# ============================================================
 # ============================================================
 # 25. 读取法规知识库
 #
@@ -1010,11 +1886,16 @@ def get_knowledge_data(source: str = None):
 
 @app.get("/api/knowledge/statistics")
 def get_knowledge_statistics(
+     request: Request,
      user: dict = Depends(require_login)
 ):
+    
+    user = request.session.get("user")
+
     print("当前用户:", user.get("user_name"))
     print("当前部门:", user.get("subjection_name"))
-    print("当前矿井:", user.get("register_dept_Name"))
+    print("当前矿井ID:", user.get("register_dept_id"))
+    print("当前矿井:", user.get("register_dept_name"))
     try:
         total = 0
         sources = []
@@ -3205,116 +4086,9 @@ async def not_found_handler(
     )
 
 
-
 if __name__ == "__main__":
-
-    print()
-    print("=" * 60)
-    print(
-        "        通用法规 AI 系统"
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=8765
     )
-    print("=" * 60)
-    print()
-
-    print(
-        "AI服务正在启动……"
-    )
-
-    print()
-
-    print(
-        "访问地址："
-    )
-
-    print(
-        "http://127.0.0.1:8765"  # ← 8765 → 8765
-    )
-
-    print()
-
-    print(
-        "工作台："
-    )
-
-    print(
-        "http://127.0.0.1:8765/dashboard"  # ← 8765 → 8765
-    )
-
-    print()
-
-    print(
-        "法规知识库："
-    )
-
-    print(
-        "http://127.0.0.1:8765/knowledge"  # ← 8765 → 8765
-    )
-
-    print()
-
-    print(
-        "AI智能出题："
-    )
-
-    print(
-        "http://127.0.0.1:8765/ai-question"  # ← 8765 → 8765
-    )
-
-    print()
-
-    print(
-        "题库管理："
-    )
-
-    print(
-        "http://127.0.0.1:8765/question-bank"  # ← 8765 → 8765
-    )
-
-    print()
-
-    print(
-        "系统设置："
-    )
-
-    print(
-        "http://127.0.0.1:8765/system"  # ← 8765 → 8765
-    )
-
-    print()
-
-    print(
-        "API文档："
-    )
-
-    print(
-        "http://127.0.0.1:8765/docs"  # ← 8765 → 8765
-    )
-
-    print()
-
-    print("=" * 60)
-    print()
-
-    # ============================================================
-    # 启动服务
-    # ============================================================
-    import os
-    
-    port = int(os.environ.get('PORT', 8765))  # ← 这个也要确认是 8765
-    
-    debug_mode = os.environ.get('DEBUG', 'false').lower() == 'true'
-    
-    if debug_mode:
-        uvicorn.run(
-            "main:app",
-            host="0.0.0.0",
-            port=port,
-            reload=True
-        )
-    else:
-        uvicorn.run(
-            app,
-            host="0.0.0.0",
-            port=port
-        )
-
