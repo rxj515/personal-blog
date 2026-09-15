@@ -1,0 +1,786 @@
+/* =====================================================
+   账户管理
+   AI知识中心风格
+===================================================== */
+
+.account-admin-page {
+    width: 100%;
+}
+
+
+/* =====================================================
+   页面标题
+===================================================== */
+
+.account-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+    gap: 15px;
+}
+
+.account-page-header h1 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 800;
+    color: #0f172a;
+}
+
+.account-page-header p {
+    margin: 10px 0 0;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.account-header-actions {
+    display: flex;
+    gap: 10px;
+}
+
+
+/* =====================================================
+   按钮
+===================================================== */
+
+.account-btn {
+    height: 44px;
+    padding: 0 24px;
+    border: none;
+    border-radius: 14px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: .25s;
+    white-space: nowrap;
+}
+
+.account-btn:hover {
+    transform: translateY(-2px);
+}
+
+.account-btn-primary {
+    background: #2563eb;
+    color: #fff;
+    box-shadow: 0 8px 20px rgba(37, 99, 235, .25);
+}
+
+.account-btn-primary:hover {
+    background: #1d4ed8;
+}
+
+.account-btn-default {
+    background: #fff;
+    color: #475569;
+    border: 1px solid #dbe3ef;
+}
+
+.account-btn-default:hover {
+    background: #f8fafc;
+}
+
+
+/* =====================================================
+   统计卡片
+===================================================== */
+
+.account-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    margin-bottom: 24px;
+}
+
+.account-stat-card {
+    min-height: 108px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 18px;
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 8px 25px rgba(15, 23, 42, .05);
+}
+
+.account-stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 21px;
+    flex-shrink: 0;
+}
+
+.account-stat-blue {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.account-stat-green {
+    background: #ecfdf5;
+    color: #059669;
+}
+
+.account-stat-orange {
+    background: #fff7ed;
+    color: #ea580c;
+}
+
+.account-stat-purple {
+    background: #f5f3ff;
+    color: #7c3aed;
+}
+
+.account-stat-label {
+    color: #64748b;
+    font-size: 13px;
+    margin-bottom: 6px;
+}
+
+.account-stat-value {
+    color: #0f172a;
+    font-size: 25px;
+    font-weight: 800;
+}
+
+
+/* =====================================================
+   搜索区域
+===================================================== */
+
+.account-tools {
+    display: flex;
+    gap: 14px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.account-search-box {
+    flex: 1;
+    min-width: 240px;
+    height: 54px;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 0 18px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    box-shadow: 0 8px 25px rgba(15, 23, 42, .05);
+}
+
+.account-search-icon {
+    font-size: 17px;
+}
+
+.account-search-box input {
+    width: 100%;
+    flex: 1;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: #334155;
+    font-size: 14px;
+}
+
+.account-search-box input::placeholder {
+    color: #94a3b8;
+}
+
+.account-filter-box {
+    width: 180px;
+    height: 54px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 16px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    box-shadow: 0 8px 25px rgba(15, 23, 42, .05);
+}
+
+.account-filter-box select {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: #fff;
+    color: #334155;
+    font-size: 14px;
+}
+
+.account-refresh-btn {
+    width: 54px;
+    height: 54px;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    background: #fff;
+    color: #64748b;
+    font-size: 17px;
+    cursor: pointer;
+    transition: .2s;
+}
+
+.account-refresh-btn:hover {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+
+/* =====================================================
+   主体卡片
+===================================================== */
+
+.account-card {
+    background: #fff;
+    border-radius: 22px;
+    overflow: hidden;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 12px 35px rgba(15, 23, 42, .06);
+}
+
+.account-card-header {
+    height: 70px;
+    padding: 0 26px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.account-card-title {
+    font-size: 18px;
+    font-weight: 800;
+    color: #111827;
+}
+
+.account-count-badge {
+    padding: 5px 12px;
+    border-radius: 20px;
+    background: #eff6ff;
+    color: #2563eb;
+    font-size: 12px;
+}
+
+
+/* =====================================================
+   表格
+===================================================== */
+
+.account-table-wrapper {
+    width: 100%;
+    overflow-x: auto;
+    min-height: 300px;
+}
+
+.account-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 900px;
+}
+
+.account-table th {
+    height: 50px;
+    padding: 0 20px;
+    text-align: left;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 600;
+    border-bottom: 1px solid #e5e7eb;
+    white-space: nowrap;
+}
+
+.account-table td {
+    height: 72px;
+    padding: 10px 20px;
+    color: #475569;
+    font-size: 13px;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.account-table tbody tr {
+    transition: .2s;
+}
+
+.account-table tbody tr:hover {
+    background: #fafcff;
+}
+
+.account-action-column {
+    text-align: right !important;
+}
+
+.account-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 7px;
+    flex-wrap: wrap;
+}
+
+
+/* =====================================================
+   用户信息
+===================================================== */
+
+.account-user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.account-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: #eff6ff;
+    color: #2563eb;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.account-user-name {
+    color: #111827;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.account-user-id {
+    margin-top: 4px;
+    color: #94a3b8;
+    font-size: 11px;
+}
+
+
+/* =====================================================
+   标签
+===================================================== */
+
+.account-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 10px;
+    border-radius: 7px;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.account-tag-admin {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.account-tag-user {
+    background: #f1f5f9;
+    color: #475569;
+}
+
+.account-tag-enabled {
+    background: #ecfdf5;
+    color: #059669;
+}
+
+.account-tag-disabled {
+    background: #fef2f2;
+    color: #dc2626;
+}
+
+
+/* =====================================================
+   操作按钮
+===================================================== */
+
+.account-action-btn {
+    height: 30px;
+    padding: 0 11px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    background: #fff;
+    cursor: pointer;
+    font-size: 12px;
+    transition: .2s;
+    white-space: nowrap;
+}
+
+.account-action-password {
+    color: #2563eb;
+    border-color: #bfdbfe;
+}
+
+.account-action-password:hover {
+    background: #eff6ff;
+}
+
+.account-action-enable {
+    color: #059669;
+    border-color: #a7f3d0;
+}
+
+.account-action-enable:hover {
+    background: #ecfdf5;
+}
+
+.account-action-disable {
+    color: #d97706;
+    border-color: #fed7aa;
+}
+
+.account-action-disable:hover {
+    background: #fff7ed;
+}
+
+.account-action-delete {
+    color: #dc2626;
+    border-color: #fecaca;
+}
+
+.account-action-delete:hover {
+    background: #fef2f2;
+}
+
+
+/* =====================================================
+   分页
+===================================================== */
+
+.account-pagination {
+    height: 70px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    border-top: 1px solid #f1f5f9;
+    color: #64748b;
+    font-size: 13px;
+}
+
+.account-page-btn {
+    height: 36px;
+    padding: 0 17px;
+    border-radius: 10px;
+    background: #fff;
+    border: 1px solid #dbe3ef;
+    color: #475569;
+    cursor: pointer;
+    transition: .2s;
+}
+
+.account-page-btn:hover:not(:disabled) {
+    background: #eff6ff;
+    color: #2563eb;
+}
+
+.account-page-btn:disabled {
+    color: #cbd5e1;
+    cursor: not-allowed;
+}
+
+
+/* =====================================================
+   空状态 / 加载
+===================================================== */
+
+.account-empty-state {
+    min-height: 300px;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    color: #94a3b8;
+}
+
+.account-empty-icon {
+    font-size: 38px;
+    margin-bottom: 12px;
+    opacity: .6;
+}
+
+.account-empty-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: #64748b;
+}
+
+.account-empty-text {
+    margin-top: 7px;
+    font-size: 13px;
+    color: #94a3b8;
+}
+
+.account-loading {
+    min-height: 300px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #94a3b8;
+    font-size: 14px;
+}
+
+
+/* =====================================================
+   弹窗
+===================================================== */
+
+.account-modal-mask {
+    position: fixed;
+    z-index: 9999;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: rgba(15, 23, 42, .45);
+    backdrop-filter: blur(3px);
+}
+
+.account-modal {
+    width: 100%;
+    max-width: 500px;
+    max-height: 90vh;
+    overflow-y: auto;
+    background: #fff;
+    border-radius: 22px;
+    box-shadow: 0 25px 70px rgba(15, 23, 42, .25);
+}
+
+.account-small-modal {
+    max-width: 460px;
+}
+
+.account-modal-header {
+    min-height: 76px;
+    padding: 0 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.account-modal-title {
+    color: #111827;
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.account-modal-subtitle {
+    margin-top: 5px;
+    color: #94a3b8;
+    font-size: 12px;
+}
+
+.account-modal-close {
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 9px;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.account-modal-close:hover {
+    background: #f1f5f9;
+}
+
+
+/* =====================================================
+   表单
+===================================================== */
+
+.account-form {
+    padding: 24px;
+}
+
+.account-form-item {
+    margin-bottom: 20px;
+}
+
+.account-form-item > label:first-child {
+    display: block;
+    margin-bottom: 8px;
+    color: #334155;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.account-form-item > label:first-child span {
+    color: #ef4444;
+}
+
+.account-form-item input[type="text"],
+.account-form-item input[type="password"],
+.account-form-item select {
+    width: 100%;
+    height: 44px;
+    padding: 0 13px;
+    border: 1px solid #dbe3ef;
+    border-radius: 10px;
+    outline: none;
+    background: #fff;
+    color: #334155;
+    font-size: 14px;
+    transition: .2s;
+}
+
+.account-form-item input:focus,
+.account-form-item select:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .08);
+}
+
+.account-form-item select:disabled {
+    background: #f8fafc;
+    color: #64748b;
+    cursor: not-allowed;
+}
+
+.account-form-tip {
+    margin-top: 6px;
+    color: #94a3b8;
+    font-size: 11px;
+}
+
+
+/* =====================================================
+   开关
+===================================================== */
+
+.account-switch-row {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 9px;
+    cursor: pointer;
+    color: #475569;
+    font-size: 13px;
+}
+
+.account-switch-row input {
+    display: none;
+}
+
+.account-switch {
+    position: relative;
+    width: 42px;
+    height: 23px;
+    border-radius: 20px;
+    background: #cbd5e1;
+    transition: .2s;
+}
+
+.account-switch::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 17px;
+    height: 17px;
+    border-radius: 50%;
+    background: #fff;
+    transition: .2s;
+}
+
+.account-switch-row input:checked + .account-switch {
+    background: #2563eb;
+}
+
+.account-switch-row input:checked + .account-switch::after {
+    transform: translateX(19px);
+}
+
+
+/* =====================================================
+   弹窗底部
+===================================================== */
+
+.account-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    padding-top: 8px;
+}
+
+
+/* =====================================================
+   响应式
+===================================================== */
+
+@media (max-width: 1100px) {
+
+    .account-stat-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+}
+
+@media (max-width: 768px) {
+
+    .account-page-header {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .account-header-actions {
+        width: 100%;
+    }
+
+    .account-header-actions .account-btn {
+        width: 100%;
+    }
+
+    .account-stat-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+
+    .account-filter-box {
+        flex: 1;
+        min-width: 150px;
+    }
+
+    .account-refresh-btn {
+        flex-shrink: 0;
+    }
+
+}
+
+@media (max-width: 600px) {
+
+    .account-stat-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .account-search-box {
+        width: 100%;
+        min-width: 100%;
+    }
+
+    .account-filter-box {
+        width: 100%;
+    }
+
+    .account-refresh-btn {
+        width: 100%;
+    }
+
+    .account-card-header {
+        padding: 0 18px;
+    }
+
+    .account-modal {
+        border-radius: 18px;
+    }
+
+    .account-form {
+        padding: 20px;
+    }
+
+}

@@ -1,0 +1,559 @@
+<div class="account-admin-page">
+
+    <!-- ============================= -->
+    <!-- 页面标题 -->
+    <!-- ============================= -->
+    <div class="account-page-header">
+        <div>
+            <h1>👤 账户管理</h1>
+            <p>系统用户账户统一管理</p>
+        </div>
+
+        <div class="account-header-actions">
+            <button
+                type="button"
+                class="account-btn account-btn-primary"
+                id="account-create-btn"
+            >
+                ＋ 创建账户
+            </button>
+        </div>
+    </div>
+
+
+    <!-- ============================= -->
+    <!-- 统计卡片 -->
+    <!-- ============================= -->
+    <div class="account-stat-grid">
+
+        <div class="account-stat-card">
+            <div class="account-stat-icon account-stat-blue">
+                👥
+            </div>
+
+            <div>
+                <div class="account-stat-label">
+                    账户总数
+                </div>
+
+                <div
+                    class="account-stat-value"
+                    id="account-total-count"
+                >
+                    0
+                </div>
+            </div>
+        </div>
+
+
+        <div class="account-stat-card">
+            <div class="account-stat-icon account-stat-green">
+                ✓
+            </div>
+
+            <div>
+                <div class="account-stat-label">
+                    正常账户
+                </div>
+
+                <div
+                    class="account-stat-value"
+                    id="account-enabled-count"
+                >
+                    0
+                </div>
+            </div>
+        </div>
+
+
+        <div class="account-stat-card">
+            <div class="account-stat-icon account-stat-orange">
+                ⏸
+            </div>
+
+            <div>
+                <div class="account-stat-label">
+                    已禁用
+                </div>
+
+                <div
+                    class="account-stat-value"
+                    id="account-disabled-count"
+                >
+                    0
+                </div>
+            </div>
+        </div>
+
+
+        <div class="account-stat-card">
+            <div class="account-stat-icon account-stat-purple">
+                🛡
+            </div>
+
+            <div>
+                <div class="account-stat-label">
+                    管理员
+                </div>
+
+                <div
+                    class="account-stat-value"
+                    id="account-admin-count"
+                >
+                    0
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+
+    <!-- ============================= -->
+    <!-- 搜索 / 筛选 -->
+    <!-- ============================= -->
+    <div class="account-tools">
+
+        <div class="account-search-box">
+            <span class="account-search-icon">🔍</span>
+
+            <input
+                type="text"
+                id="account-search"
+                placeholder="搜索用户名、用户编号"
+                autocomplete="off"
+            >
+        </div>
+
+
+        <div class="account-filter-box">
+
+            <span>👤</span>
+
+            <select id="account-role-filter">
+                <option value="">全部角色</option>
+                <option value="管理员">管理员</option>
+                <option value="普通用户">普通用户</option>
+            </select>
+
+        </div>
+
+
+        <div class="account-filter-box">
+
+            <span>●</span>
+
+            <select id="account-status-filter">
+                <option value="">全部状态</option>
+                <option value="enabled">正常</option>
+                <option value="disabled">已禁用</option>
+            </select>
+
+        </div>
+
+
+        <button
+            type="button"
+            class="account-refresh-btn"
+            id="account-refresh-btn"
+            title="刷新"
+        >
+            🔄
+        </button>
+
+    </div>
+
+
+    <!-- ============================= -->
+    <!-- 账户列表 -->
+    <!-- ============================= -->
+    <div class="account-card">
+
+        <div class="account-card-header">
+
+            <div class="account-card-title">
+                用户账户
+            </div>
+
+            <span
+                class="account-count-badge"
+                id="account-result-count"
+            >
+                0 个账户
+            </span>
+
+        </div>
+
+
+        <div class="account-table-wrapper">
+
+            <table class="account-table">
+
+                <thead>
+                    <tr>
+                        <th>用户</th>
+                        <th>角色</th>
+                        <th>状态</th>
+                        <th>创建时间</th>
+                        <th>最后登录</th>
+                        <th class="account-action-column">
+                            操作
+                        </th>
+                    </tr>
+                </thead>
+
+                <tbody id="account-list">
+
+                    <!-- JS 渲染 -->
+
+                </tbody>
+
+            </table>
+
+
+            <!-- 空状态 -->
+            <div
+                class="account-empty-state"
+                id="account-empty-state"
+                style="display:none;"
+            >
+                <div class="account-empty-icon">
+                    👤
+                </div>
+
+                <div class="account-empty-title">
+                    暂无账户
+                </div>
+
+                <div class="account-empty-text">
+                    当前没有符合条件的账户
+                </div>
+            </div>
+
+
+            <!-- 加载状态 -->
+            <div
+                class="account-loading"
+                id="account-loading"
+                style="display:none;"
+            >
+                正在加载账户...
+            </div>
+
+        </div>
+
+
+        <!-- ============================= -->
+        <!-- 分页 -->
+        <!-- ============================= -->
+        <div class="account-pagination">
+
+            <button
+                type="button"
+                class="account-page-btn"
+                id="account-prev"
+            >
+                上一页
+            </button>
+
+            <span id="account-page-info">
+                1 / 1
+            </span>
+
+            <button
+                type="button"
+                class="account-page-btn"
+                id="account-next"
+            >
+                下一页
+            </button>
+
+        </div>
+
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- 创建账户弹窗 -->
+    <!-- ================================================= -->
+    <div
+        class="account-modal-mask"
+        id="account-create-modal"
+        style="display:none;"
+    >
+
+        <div class="account-modal">
+
+            <div class="account-modal-header">
+
+                <div>
+                    <div class="account-modal-title">
+                        创建账户
+                    </div>
+
+                    <div class="account-modal-subtitle">
+                        创建新的系统登录账户
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    class="account-modal-close"
+                    id="account-create-close"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <form
+                id="account-create-form"
+                class="account-form"
+            >
+
+                <!-- 用户名 -->
+                <div class="account-form-item">
+
+                    <label>
+                        用户名
+                        <span>*</span>
+                    </label>
+
+                    <input
+                        type="text"
+                        id="account-username"
+                        name="username"
+                        maxlength="30"
+                        autocomplete="off"
+                        placeholder="请输入用户名"
+                    >
+
+                    <div class="account-form-tip">
+                        用户名至少 2 个字符，不能包含空格
+                    </div>
+
+                </div>
+
+
+                <!-- 密码 -->
+                <div class="account-form-item">
+
+                    <label>
+                        密码
+                        <span>*</span>
+                    </label>
+
+                    <input
+                        type="password"
+                        id="account-password"
+                        name="password"
+                        autocomplete="new-password"
+                        placeholder="请输入密码"
+                    >
+
+                    <div class="account-form-tip">
+                        密码至少 12 位
+                    </div>
+
+                </div>
+
+
+                <!-- 确认密码 -->
+                <div class="account-form-item">
+
+                    <label>
+                        确认密码
+                        <span>*</span>
+                    </label>
+
+                    <input
+                        type="password"
+                        id="account-password-confirm"
+                        name="password_confirm"
+                        autocomplete="new-password"
+                        placeholder="请再次输入密码"
+                    >
+
+                </div>
+
+
+                <!-- 角色 -->
+                <div class="account-form-item">
+
+                    <label>
+                        角色
+                    </label>
+
+                    <select
+                        id="account-role"
+                        name="role"
+                        disabled
+                    >
+                        <option value="普通用户">
+                            普通用户
+                        </option>
+                    </select>
+
+                    <div class="account-form-tip">
+                        新建账户默认只能创建普通用户
+                    </div>
+
+                </div>
+
+
+                <!-- 状态 -->
+                <div class="account-form-item">
+
+                    <label>
+                        状态
+                    </label>
+
+                    <label class="account-switch-row">
+
+                        <input
+                            type="checkbox"
+                            id="account-enabled"
+                            checked
+                        >
+
+                        <span class="account-switch"></span>
+
+                        <span>
+                            启用账户
+                        </span>
+
+                    </label>
+
+                </div>
+
+
+                <!-- 按钮 -->
+                <div class="account-modal-footer">
+
+                    <button
+                        type="button"
+                        class="account-btn account-btn-default"
+                        id="account-create-cancel"
+                    >
+                        取消
+                    </button>
+
+                    <button
+                        type="submit"
+                        class="account-btn account-btn-primary"
+                        id="account-create-submit"
+                    >
+                        创建账户
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+
+    <!-- ================================================= -->
+    <!-- 修改密码弹窗 -->
+    <!-- ================================================= -->
+    <div
+        class="account-modal-mask"
+        id="account-password-modal"
+        style="display:none;"
+    >
+
+        <div class="account-modal account-small-modal">
+
+            <div class="account-modal-header">
+
+                <div>
+                    <div class="account-modal-title">
+                        修改密码
+                    </div>
+
+                    <div
+                        class="account-modal-subtitle"
+                        id="account-password-username"
+                    >
+                        用户
+                    </div>
+                </div>
+
+                <button
+                    type="button"
+                    class="account-modal-close"
+                    id="account-password-close"
+                >
+                    ×
+                </button>
+
+            </div>
+
+
+            <form
+                id="account-password-form"
+                class="account-form"
+            >
+
+                <div class="account-form-item">
+
+                    <label>
+                        新密码
+                        <span>*</span>
+                    </label>
+
+                    <input
+                        type="password"
+                        id="account-new-password"
+                        autocomplete="new-password"
+                        placeholder="请输入新密码"
+                    >
+
+                </div>
+
+
+                <div class="account-form-item">
+
+                    <label>
+                        确认新密码
+                        <span>*</span>
+                    </label>
+
+                    <input
+                        type="password"
+                        id="account-new-password-confirm"
+                        autocomplete="new-password"
+                        placeholder="请再次输入新密码"
+                    >
+
+                </div>
+
+
+                <div class="account-modal-footer">
+
+                    <button
+                        type="button"
+                        class="account-btn account-btn-default"
+                        id="account-password-cancel"
+                    >
+                        取消
+                    </button>
+
+                    <button
+                        type="submit"
+                        class="account-btn account-btn-primary"
+                    >
+                        修改密码
+                    </button>
+
+                </div>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</div>
