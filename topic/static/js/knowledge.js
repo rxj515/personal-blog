@@ -1214,12 +1214,11 @@ async function loadKnowledge() {
             }
 
             showToast(
-                '✅ 打标签完成！',
+                '🏷️ 打标签任务已启动，请等待完成',
                 'success'
             );
-
-            // 重新加载知识库（刷新列表）
-            await loadKnowledge();
+            
+            startTagProgress();
 
             // ✅ 触发自定义事件，通知 app.js 刷新侧边栏
             document.dispatchEvent(new CustomEvent('knowledgeUpdated'));
@@ -1241,6 +1240,94 @@ async function loadKnowledge() {
             button.disabled = false;
             button.textContent = oldText;
         }
+    }
+
+
+
+    function startTagProgress(){
+
+        const timer = setInterval(async ()=>{
+    
+            try {
+    
+                const result = await window.AppAPI.get(
+                    '/api/tag/progress'
+                );
+    
+    
+                console.log("标签进度:", result);
+    
+    
+                // ============================
+                // 新增：显示打标签进度
+                // ============================
+                const progressDom = document.getElementById(
+                    "tag-progress"
+                );
+    
+    
+                if(progressDom){
+    
+                    progressDom.style.display = "inline-block";
+    
+                    progressDom.innerText = result.message;
+    
+                }
+    
+    
+                // ============================
+                // 完成
+                // ============================
+                if(result.status === "done"){
+    
+                    clearInterval(timer);
+    
+    
+                    if(progressDom){
+                        progressDom.innerText =
+                            "✅ 打标签完成";
+                    }
+    
+    
+                    await loadKnowledge();
+    
+    
+                    document.dispatchEvent(
+                        new CustomEvent(
+                            'knowledgeUpdated'
+                        )
+                    );
+    
+                }
+    
+    
+                // ============================
+                // 失败
+                // ============================
+                if(result.status === "error"){
+    
+                    clearInterval(timer);
+    
+                    if(progressDom){
+                        progressDom.innerText =
+                            "❌ 打标签失败";
+                    }
+    
+                }
+    
+    
+            }catch(e){
+    
+                console.error(
+                    "查询标签进度失败",
+                    e
+                );
+    
+            }
+    
+    
+        },2000);
+    
     }
 
 

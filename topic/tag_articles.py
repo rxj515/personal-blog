@@ -27,7 +27,54 @@ print(f"AI 模型: {AI_MODEL}")
 KNOWLEDGE_DIR = BASE_DIR / "data" / "knowledge"
 
 # 合法的大类列表
-VALID_CATEGORIES = ["采煤类", "掘进类", "通风类", "机电类", "安全类", "探水类", "运输类", "全部工种"]
+from excel_to_tree import load_category_tree
+
+
+from excel_to_tree import load_category_tree
+
+
+def load_categories():
+
+    tree = load_category_tree()
+
+    categories = []
+
+
+    def walk(nodes, parent_name=""):
+
+        for node in nodes:
+
+
+            categories.append({
+
+                "id": node.get("id", ""),
+
+                "name": node.get("name", ""),
+
+                "parentId": node.get("parentId", ""),
+
+                "superiorName": parent_name
+
+            })
+
+
+            if node.get("children"):
+
+                walk(
+                    node["children"],
+                    node.get("name", "")
+                )
+
+
+    walk(tree)
+
+
+    return categories
+
+
+
+CATEGORY_LIST = load_categories()
+
 
 # ============================================================
 # 全局进度变量
@@ -36,10 +83,9 @@ VALID_CATEGORIES = ["采煤类", "掘进类", "通风类", "机电类", "安全�
 tag_progress = {
     "total": 0,
     "processed": 0,
-    "status": "idle",
-    "message": ""
+    "status": "running",
+    "message": "开始打标签..."
 }
-
 
 def ai_call(prompt):
     """调用 AI 接口"""
@@ -72,31 +118,31 @@ def get_progress():
 
 
 def extract_category_from_response(text):
-    """从 AI 返回的文本中提取分类结果"""
-    text = text.strip()
-    
-    # 直接匹配完整大类名
-    for category in VALID_CATEGORIES:
-        if category in text:
-            return category
-    
-    # 匹配 "xxx:采煤类" 格式
-    pattern = r'[：:]\s*([采掘通机安探运]+[类])'
-    match = re.search(pattern, text)
-    if match:
-        cat = match.group(1)
-        for category in VALID_CATEGORIES:
-            if category in cat:
-                return category
-    
-    # 匹配单独的类名
-    for category in VALID_CATEGORIES:
-        if category.replace("类", "") in text:
-            return category
-    
-    # 默认返回全部工种
-    return "全部工种"
 
+    """
+    解析AI返回:
+    1:123:瓦斯员
+    """
+
+    text = text.strip()
+
+    match = re.search(
+        r'(\d+)\s*[:：]\s*(\d+)\s*[:：]\s*(.+)',
+        text
+    )
+
+    if match:
+
+        return {
+            "id": match.group(2).strip(),
+            "name": match.group(3).strip()
+        }
+
+
+    return {
+        "id": "",
+        "name": "全部工种"
+    }
 
 def process_single_knowledge(json_path, knowledge_name):
     """
@@ -149,28 +195,52 @@ def process_single_knowledge(json_path, knowledge_name):
             # 构建批次内容，使用简洁的序号
             for i, idx in enumerate(batch_indices, 1):
                 item = articles[idx]
-                content = item.get("content", "")[:200]
+                content = item.get("content", "")[:600]
                 batch_data.append((i, idx, item))
                 batch_content += f"{i}. {content}\n\n"
 
-            prompt = f"""
-            请判断以下法条内容分别属于哪个大类？
+            category_text = "\n".join(
+                [
+                    f'{x["id"]}:{x["name"]}'
+                    for x in CATEGORY_LIST
+                ]
+            )
 
-            大类列表：采煤类、掘进类、通风类、机电类、安全类、探水类、运输类
+
+            prompt = f"""
+            你是煤矿安全法规分类专家。
+
+            请根据法规内容，从已有分类中选择最匹配分类。
+
+
+            已有分类：
+
+            {category_text}
+
 
             法条内容：
+
             {batch_content}
 
-            请严格按照以下格式返回，每个法条一行，格式为"序号:大类名称"：
-            1:采煤类
-            2:通风类
-            3:安全类
 
-            注意：
-            1. 必须为每个法条都返回结果，序号从1到{len(batch_indices)}
-            2. 只能从上述大类列表中选择
-            3. 如果无法判断，返回"全部工种"
-            4. 不要输出其他任何内容
+            返回格式：
+
+            序号:id:名称
+
+
+            例如：
+
+            1:1001:瓦斯员
+            2:1002:安全检查员
+
+
+            要求：
+
+            1. 必须选择已有分类
+            2. 不允许创造分类
+            3. 每条必须返回
+            4. 不要输出解释
+
             """
 
             result = ai_call(prompt)
@@ -194,36 +264,48 @@ def process_single_knowledge(json_path, knowledge_name):
                 if match:
                     num = int(match.group(1))
                     category = match.group(2).strip()
-                    # 提取大类名称
-                    for valid_cat in VALID_CATEGORIES:
-                        if valid_cat in category:
-                            # 找到对应的原始索引
-                            for i, idx, _ in batch_data:
-                                if i == num:
-                                    results[idx] = valid_cat
-                                    break
+            
+                parts = category.split(":")
+
+
+                if len(parts) >= 2:
+
+
+                    dept_id = parts[0].strip()
+
+                    dept_name = parts[1].strip()
+
+
+                    for i, idx, _ in batch_data:
+
+                        if i == num:
+
+                            results[idx] = {
+
+                                "id": dept_id,
+
+                                "name": dept_name
+
+                            }
+
                             break
-                    else:
-                        # 没匹配到合法大类，尝试模糊匹配
-                        for valid_cat in VALID_CATEGORIES:
-                            if valid_cat.replace("类", "") in category or category in valid_cat:
-                                for i, idx, _ in batch_data:
-                                    if i == num:
-                                        results[idx] = valid_cat
-                                        break
-                                break
             
             # 检查是否有遗漏的法条
             missing_indices = set(idx for _, idx, _ in batch_data) - set(results.keys())
             if missing_indices:
                 print(f"   ⚠️ 批次 {batch_idx + 1} 遗漏了 {len(missing_indices)} 条法条，补充为全部工种")
                 for idx in missing_indices:
-                    results[idx] = "全部工种"
-            
+                    results[idx] = {
+    "id":"",
+    "name":"全部工种"
+}
             # 确保每个法条都有结果
             for _, idx, _ in batch_data:
                 if idx not in results:
-                    results[idx] = "全部工种"
+                    results[idx] = {
+    "id":"",
+    "name":"全部工种"
+}
             
             return results
 
@@ -245,23 +327,43 @@ def process_single_knowledge(json_path, knowledge_name):
         processed_count = 0
         total_articles = len(article_indices)
 
+        tag_progress["total"] = total_articles
+        tag_progress["processed"] = 0
+        tag_progress["message"] = f"准备处理，共 {total_articles} 条"
+
         for batch_idx, batch_indices in batches:
             try:
                 results = process_batch(batch_indices, batch_idx)
                 
                 # 更新文章
-                for idx, dept_name in results.items():
-                    if 0 <= idx < len(articles):
-                        articles[idx]["dept_type_name"] = dept_name
                 
+                for idx, dept_info in results.items():
+                    if 0 <= idx < len(articles):
+                        articles[idx]["dept_type_id"] = dept_info["id"]
+
+                        articles[idx]["dept_type_name"] = dept_info["name"]
+
                 # 保存
                 with open(json_path, "w", encoding="utf-8") as f:
                     json.dump(articles, f, ensure_ascii=False, indent=2)
                 
                 processed_count += len(batch_indices)
-                print(f"   ✅ 已完成 {processed_count}/{total_articles} 条")
-                
-                # 避免 API 限流
+
+
+                # 更新进度
+                tag_progress["processed"] = processed_count
+                tag_progress["total"] = total_articles
+                tag_progress["status"] = "running"
+                tag_progress["message"] = (
+                    f"正在打标签 {processed_count}/{total_articles}"
+                )
+
+
+                print(
+                    f"   ✅ 已完成 {processed_count}/{total_articles} 条"
+                )
+                                
+                                # 避免 API 限流
                 time.sleep(0.5)
                 
             except Exception as e:

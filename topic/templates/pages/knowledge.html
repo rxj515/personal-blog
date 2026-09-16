@@ -6,10 +6,27 @@
             <h1>📚 法规知识库</h1>
             <p>法规、规章及安全知识统一管理</p>
         </div>
-        <div style="display: flex; gap: 10px; flex-wrap: wrap;">
-            <button class="btn-primary" id="update-knowledge-btn">更新知识库</button>
-            <button class="btn-tag" id="tag-articles-btn">🏷️ 打标签</button>
-            <button class="btn-upload" id="show-upload-btn">📤 上传PDF</button>
+        <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items:center;">
+            <button class="btn-primary" id="update-knowledge-btn">
+                更新知识库
+            </button>
+        
+            <button class="btn-tag" id="tag-articles-btn">
+                🏷️ 打标签
+            </button>
+        
+            <!-- 打标签进度 -->
+            <span id="tag-progress"
+                  style="
+                  font-size:13px;
+                  color:#666;
+                  display:none;
+                  ">
+            </span>
+        
+            <button class="btn-upload" id="show-upload-btn">
+                📤 上传PDF
+            </button>
         </div>
     </div>
 

@@ -1995,38 +1995,6 @@ def get_knowledge_statistics(
             }
         }
 
-        
-
-def get_category_by_superior_name(superior_name):
-    """
-    根据上级名称，自动归类到大类
-    """
-    SUPERIOR_TO_CATEGORY = {
-        "综采": "采煤类",
-        "综采一队": "采煤类",
-        "掘进开拓": "掘进类",
-        "掘进二队": "掘进类",
-        "运输": "运输类",
-        "机运队": "运输类",
-        "机电": "机电类",
-        "机电运输": "机电类",
-        "地面机电队": "机电类",
-        "通风队": "通风类",
-        "通风": "通风类",
-        "安全": "安全类",
-        "安监部门": "安全类",
-        "抽采": "抽采类",
-        "探水": "探水类",
-        "监控信息": "监控类",
-        "鑫隆煤业": "全部工种",
-        "荣大煤业": "全部工种",
-        "惠安煤业": "全部工种",
-        "煤业公司": "全部工种",
-        None: "全部工种"
-    }
-    return SUPERIOR_TO_CATEGORY.get(superior_name, "全部工种")
-
-
 
 @app.post("/api/questions/generate-stream")
 async def generate_questions_stream(
@@ -2094,10 +2062,20 @@ async def generate_questions_stream(
         # ----------------------------------------------------
 
         dept = data.get("dept", {})
+
         dept_id = dept.get("id", "")
-        dept_name = dept.get("fullName", "")
+
+        # 获取最后一级分类
+        full_name = dept.get("fullName", "")
+        dept_name = full_name.split("/")[-1].strip()
+
         superior_name = dept.get("superiorName", "")
 
+
+        print("==============================")
+        print("前端传来的dept:")
+        print(json.dumps(dept, ensure_ascii=False, indent=2))
+        print("==============================")
         # ----------------------------------------------------
         # 4. ✅ 获取当前选中的 PDF（从请求中读取 source）
         # ----------------------------------------------------
@@ -2213,17 +2191,140 @@ async def generate_questions_stream(
             # ✅ 根据上级名称（大类）过滤法条
             # ----------------------------------------------------
 
-            if superior_name:
-                dept_category = get_category_by_superior_name(superior_name)
+           # ====================================================
+            # 根据 Excel 分类过滤
+            # ====================================================
+
+            # ====================================================
+            # 根据 Excel 分类逐级匹配
+            # 规则：
+            # 1. 优先匹配最后一级（工种）
+            # 2. 没有工种，再匹配上一级分类
+            # 3. 再没有，匹配全部工种
+            # ====================================================
+
+            full_name = dept.get("fullName", "")
+
+            # 例如：
+            # 鑫隆煤业 / 监控信息 / 巡检员
+            # 转成：
+            # ["鑫隆煤业", "监控信息", "巡检员"]
+
+            category_path = [
+                x.strip()
+                for x in full_name.split("/")
+                if x.strip()
+            ]
+
+
+            print("==============================")
+            print("Excel分类匹配路径:")
+            print(category_path)
+            print("==============================")
+
+
+            # match_category = None
+
+
+            # # 从最后一级开始匹配
+            # # 巡检员 -> 监控信息 -> 鑫隆煤业
+
+            # for category in reversed(category_path):
+
+            #     matched_articles = [
+            #         item
+            #         for item in article_list
+            #         if item.get("dept_type_name") == category
+            #     ]
+
+            #     if matched_articles:
+
+            #         match_category = category
+
+            #         article_list = matched_articles
+
+            #         break
+
+
+            # ====================================================
+            # 只匹配当前选择的最后一级工种
+            # 不向上找父级
+            # ====================================================
+
+            match_category = category_path[-1] if category_path else ""
+
+
+            article_list = [
+                item
+                for item in article_list
+                if item.get("dept_type_name") == match_category
+            ]
+
+
+            print(
+                f"当前选择分类: {match_category}"
+            )
+
+
+            print(
+                f"匹配到法规数量: {len(article_list)}"
+            )
+
+
+
+            # 如果没有匹配到任何分类
+            # 尝试全部工种
+
+            # if not match_category:
+
+            #     matched_articles = [
+            #         item
+            #         for item in article_list
+            #         if item.get("dept_type_name") == "全部工种"
+            #     ]
+
+            #     if matched_articles:
+
+            #         match_category = "全部工种"
+
+            #         article_list = matched_articles
+
+
+
+            # print(
+            #     f"✅ 最终使用分类: {match_category}"
+            # )
+
+
+            if not article_list:
+
+                print(
+                    f"⚠️ 分类 [{match_category}] 没有对应法规，不生成题目"
+                )
+
+                yield f"data: {json.dumps({'type':'error','message':f'分类【{match_category}】没有对应法规'})}\n\n"
+
+                return
+
+
+
+            # 如果全部都没有
+            # 保留原来的全部法规兜底
+
+            if not match_category:
+
+                print(
+                    f"⚠️ 分类 [{full_name}] 没有匹配标签，使用全部法规"
+                )
 
                 article_list = [
-                    item for item in article_list
-                    if item.get("dept_type_name") == dept_category
-                    or item.get("dept_type_name") == "全部工种"
+                    item
+                    for item in article_list
+                    if isinstance(item, dict)
+                    and item.get("type") == "article"
+                    and item.get("article")
+                    and item.get("content")
                 ]
-
-                if not article_list:
-                    print(f"⚠️ 大类 [{dept_category}] 没有匹配到法条，使用全部法条")
 
             # 生成题型计划
             import random
@@ -2297,9 +2398,8 @@ async def generate_questions_stream(
                     current_type,
                     {
                         "id": dept_id,
-                        "fullName": dept_name,
-                        "superiorName": superior_name,
-                        "category": dept_category
+                        "fullName": full_name,
+                        "category": match_category
                     }
                 )
 
@@ -3823,41 +3923,55 @@ def delete_pdf(filename: str):
 # POST /api/tag/articles
 #
 # ============================================================
-
 @app.post("/api/tag/articles")
 def tag_articles_api():
     """
-    给法条打工种标签（独立接口）
+    给法条打工种标签（后台执行）
     """
     try:
-
-        print()
-        print("=" * 60)
-        print("🏷️ 开始打工种标签...")
-        print("=" * 60)
-
+        import threading
         import tag_articles
-        tag_articles.main()
 
-        print("✅ 工种标签打标完成")
-        print("=" * 60)
-        print()
+
+        def run_tag():
+            try:
+                tag_articles.main()
+            except Exception as e:
+                print("后台打标签失败:", e)
+
+
+        thread = threading.Thread(
+            target=run_tag,
+            daemon=True
+        )
+
+        thread.start()
+
 
         return {
             "success": True,
-            "message": "打标签完成"
+            "message": "打标签任务已启动"
         }
+
 
     except Exception as e:
-
-        print()
-        print("❌ 打标签失败：", e)
-        print()
-
         return {
             "success": False,
-            "message": f"打标签失败：{e}"
+            "message": str(e)
         }
+
+
+
+# =====================================================
+# 打标签进度查询
+# =====================================================
+
+@app.get("/api/tag/progress")
+def tag_progress_api():
+
+    import tag_articles
+
+    return tag_articles.get_progress()
 
 # ============================================================
 # 36. 删除新题（通过ID精确删除，同时从历史题库中移除）
