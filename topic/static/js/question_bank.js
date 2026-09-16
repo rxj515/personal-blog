@@ -14,7 +14,9 @@ const QuestionBank = {
     filteredQuestions: [],
     currentPage: 1,
     pageSize: 10,
-
+    
+    // 当前选择分类
+    currentDeptId: "",
 
     // =====================================================
     // 初始化
@@ -73,7 +75,26 @@ const QuestionBank = {
             };
         }
 
+        // 分类筛选
+        const deptFilter =
+            document.getElementById(
+                'question-dept-filter'
+            );
 
+        if (deptFilter) {
+
+            deptFilter.onchange = () => {
+
+                this.currentDeptId =
+                    deptFilter.value;
+
+                this.filterQuestions();
+
+            };
+        }
+
+
+        
         // 题型筛选
         const typeFilter =
             document.getElementById(
@@ -460,56 +481,72 @@ const QuestionBank = {
 
         const keyword =
             document
-                .getElementById(
-                    'question-search'
-                )
+                .getElementById('question-search')
                 ?.value
                 .trim()
                 .toLowerCase() || '';
-
-
+    
+    
         const type =
             document
-                .getElementById(
-                    'question-type-filter'
-                )
+                .getElementById('question-type-filter')
                 ?.value || '';
-
-
+    
+    
         this.filteredQuestions =
             this.questions.filter(q => {
-
+    
+    
                 const text =
                     JSON.stringify(q)
                         .toLowerCase();
-
-
+    
+    
+                // 搜索
                 const keywordMatch =
                     !keyword ||
                     text.includes(keyword);
-
-
+    
+    
+    
+                // 题型
                 const typeMatch =
                     !type ||
                     this.getQuestionType(q) === type;
-
-
+    
+    
+    
+                // 分类
+                const deptMatch =
+                    !this.currentDeptId ||
+                    String(
+                        q.dept_id ||
+                        q.deptId ||
+                        ''
+                    ) === String(
+                        this.currentDeptId
+                    );
+    
+    
+    
                 return (
                     keywordMatch &&
-                    typeMatch
+                    typeMatch &&
+                    deptMatch
                 );
+    
             });
-
-
+    
+    
+    
         this.currentPage = 1;
-
-
+    
         this.updateTotal();
-
+    
         this.renderQuestions();
-
+    
         this.bindCheckboxEvents();
-
+    
         this.bindDeleteEvents();
     },
 
@@ -2089,17 +2126,47 @@ const QuestionBank = {
                 );
 
 
-            const select =
+            // const select =
+            //     document.getElementById(
+            //         'import-target-select'
+            //     );
+
+
+            const importSelect =
                 document.getElementById(
                     'import-target-select'
                 );
 
+            const filterSelect =
+                document.getElementById(
+                    'question-dept-filter'
+                );
 
-            if (!select) return;
+
+    
+
+            // if (!select) return;
 
 
-            select.innerHTML =
+            // select.innerHTML =
+            //     '<option value="">-- 请选择目标分类 --</option>';
+
+
+
+            if(importSelect){
+
+                importSelect.innerHTML =
                 '<option value="">-- 请选择目标分类 --</option>';
+            
+            }
+            
+            if(filterSelect){
+            
+                filterSelect.innerHTML =
+                '<option value="">全部工种</option>';
+            
+            }
+
 
 
             if (
@@ -2141,9 +2208,27 @@ const QuestionBank = {
                                 '';
 
 
-                            select.appendChild(
-                                opt
-                            );
+                            // select.appendChild(
+                            //     opt
+                            // );
+
+                            if(importSelect){
+
+                                importSelect.appendChild(
+                                    opt.cloneNode(true)
+                                );
+                            
+                            }
+                            
+                            
+                            if(filterSelect){
+                            
+                                filterSelect.appendChild(
+                                    opt.cloneNode(true)
+                                );
+                            
+                            }
+
 
 
                             if (

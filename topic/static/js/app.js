@@ -103,10 +103,15 @@ const App = {
     
         // 加载当前登录用户
         this.loadCurrentUser();
-    
+
+        // ⭐ 根据角色控制系统设置/账户管理菜单
+        this.updateAdminMenu();
+
+
         // 加载AI配置
         this.loadAIStatus();
-    
+
+
         this.loadGlobalAIConfig();
     
         this.loadPage('dashboard');
@@ -241,42 +246,42 @@ const App = {
             }
 
             // 部门
-            const userDept =
-                document.getElementById(
-                    "current-user-dept"
-                );
+            // const userDept =
+            //     document.getElementById(
+            //         "current-user-dept"
+            //     );
 
-            if (userDept) {
+            // if (userDept) {
 
-                userDept.textContent =
-                    user.subjection_name || "未知部门";
+            //     userDept.textContent =
+            //         user.subjection_name || "未知部门";
 
-            } else {
+            // } else {
 
-                console.error(
-                    "找不到 current-user-dept"
-                );
+            //     console.error(
+            //         "找不到 current-user-dept"
+            //     );
 
-            }
+            // }
 
             // 矿井
-            const userMine =
-                document.getElementById(
-                    "current-user-mine"
-                );
+            // const userMine =
+            //     document.getElementById(
+            //         "current-user-mine"
+            //     );
 
-            if (userMine) {
+            // if (userMine) {
 
-                userMine.textContent =
-                    user.mine_name || "未知矿井";
+            //     userMine.textContent =
+            //         user.mine_name || "未知矿井";
 
-            } else {
+            // } else {
 
-                console.error(
-                    "找不到 current-user-mine"
-                );
+            //     console.error(
+            //         "找不到 current-user-mine"
+            //     );
 
-            }
+            // }
 
             console.log(
                 "✅ 当前登录用户显示完成"
@@ -1266,82 +1271,181 @@ const App = {
 
     // =====================================================
     // 管理员菜单权限
+    // 控制：
+    // 1. 系统设置
+    // 2. 账户管理
+    // 普通用户隐藏
+    // 管理员显示
     // =====================================================
+
     async updateAdminMenu() {
 
+
+        // 系统设置父菜单
+        const systemMenu =
+            document.querySelector(
+                '.system-menu-parent'
+            );
+
+
+        // 账户管理菜单
         const accountMenu =
             document.getElementById(
                 "account-menu-item"
             );
 
-        if (!accountMenu) {
-            return;
+
+        // =====================================================
+        // 默认全部隐藏
+        // =====================================================
+
+        if(systemMenu){
+
+            systemMenu.style.display =
+                "none";
+
         }
 
-        // 默认先隐藏
-        accountMenu.style.display = "none";
+
+        if(accountMenu){
+
+            accountMenu.style.display =
+                "none";
+
+        }
+
+
 
         try {
+
 
             const response =
                 await fetch(
                     "/api/account/me",
                     {
-                        method: "GET",
-                        credentials: "include",
-                        headers: {
+                        method:"GET",
+
+                        credentials:"include",
+
+                        headers:{
                             "Accept":
-                                "application/json"
+                            "application/json"
                         },
-                        cache: "no-store"
+
+                        cache:"no-store"
                     }
                 );
 
-            if (!response.ok) {
+
+
+            if(!response.ok){
 
                 console.warn(
-                    "获取管理员权限失败：",
+                    "获取权限失败:",
                     response.status
                 );
 
                 return;
+
             }
+
+
 
             const result =
                 await response.json();
 
-            if (
+
+
+            console.log(
+                "权限信息:",
+                result
+            );
+
+
+
+            // =====================================================
+            // 管理员
+            // =====================================================
+
+            if(
                 result &&
                 result.success &&
                 result.data &&
                 result.data.role === "管理员"
-            ) {
+            ){
 
-                accountMenu.style.display = "";
+
+                // 显示系统设置
+
+                if(systemMenu){
+
+                    systemMenu.style.display =
+                        "";
+
+                }
+
+
+
+                // 显示账户管理
+
+                if(accountMenu){
+
+                    accountMenu.style.display =
+                        "";
+
+                }
+
+
 
                 console.log(
-                    "✅ 当前用户是管理员，显示账户管理"
+                    "✅ 管理员，显示系统设置和账户管理"
                 );
 
-            } else {
 
-                accountMenu.style.display = "none";
+
+            }else{
+
 
                 console.log(
-                    "当前用户不是管理员，隐藏账户管理"
+                    "普通用户，隐藏系统设置和账户管理"
                 );
+
+
             }
 
-        } catch (error) {
+
+
+        }catch(error){
+
 
             console.error(
-                "❌ 获取管理员权限失败：",
+                "❌ 权限菜单加载失败:",
                 error
             );
 
-            // 出错时保持隐藏
-            accountMenu.style.display = "none";
+
+            // 出错保持隐藏
+
+
+            if(systemMenu){
+
+                systemMenu.style.display =
+                    "none";
+
+            }
+
+
+            if(accountMenu){
+
+                accountMenu.style.display =
+                    "none";
+
+            }
+
+
         }
+
+
     },
 
 

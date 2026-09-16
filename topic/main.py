@@ -365,6 +365,7 @@ class LoginMiddleware(BaseHTTPMiddleware):
 # ============================================================
 
 # 先注册 LoginMiddleware
+
 app.add_middleware(LoginMiddleware)
 
 # app.add_middleware(
@@ -377,11 +378,21 @@ app.add_middleware(LoginMiddleware)
 #     path="/"
 # )
 
+# app.add_middleware(
+#     SessionMiddleware,
+#     secret_key=SECRET_KEY,
+#     session_cookie="session",
+#     same_site="lax",
+#     https_only=False,
+#     path="/"
+# )
+
+
 app.add_middleware(
     SessionMiddleware,
     secret_key=SECRET_KEY,
     session_cookie="session",
-    max_age=3600 * 12,
+    max_age= None,
     same_site="lax",
     https_only=False,
     path="/"
@@ -725,6 +736,59 @@ def account_list(request: Request):
         )
 
 
+# ============================================================
+# 获取当前账户权限
+#
+# GET /api/account/me
+# ============================================================
+
+@app.get("/api/account/me")
+def account_me(request: Request):
+
+    try:
+
+        current_user = request.session.get(
+            "user"
+        )
+
+
+        if not current_user:
+
+            return {
+                "success":False,
+                "message":"未登录"
+            }
+
+
+
+        return {
+
+            "success":True,
+
+            "data":{
+
+                "role":
+                    current_user.get(
+                        "role",
+                        "普通用户"
+                    )
+
+            }
+
+        }
+
+
+    except Exception as e:
+
+
+        return {
+
+            "success":False,
+
+            "message":str(e)
+
+        }
+        
 # ============================================================
 # 2. 创建账户
 #
@@ -2230,7 +2294,13 @@ async def generate_questions_stream(
                 question = question_generator.generate_one_question(
                     article,
                     content,
-                    current_type
+                    current_type,
+                    {
+                        "id": dept_id,
+                        "fullName": dept_name,
+                        "superiorName": superior_name,
+                        "category": dept_category
+                    }
                 )
 
                 if question is None:
@@ -2323,34 +2393,110 @@ async def generate_questions_stream(
 #
 # ============================================================
 
+# @app.get("/api/questions/data")
+# def get_questions_data():
+
+#     try:
+
+#         # ----------------------------------------------------
+#         # 查找历史题库（排除 _new.json）
+#         # ----------------------------------------------------
+
+#         question_file = find_question_file()
+
+#         if question_file is None:
+
+#             return {
+#                 "success": False,
+#                 "message":
+#                     "questions目录中没有找到历史题库JSON",
+#                 "count": 0,
+#                 "data": []
+#             }
+
+#         # ----------------------------------------------------
+#         # 读取JSON
+#         # ----------------------------------------------------
+
+#         data = read_json_file(
+#             question_file
+#         )
+
+#         if data is None:
+
+#             return {
+#                 "success": False,
+#                 "message": "题库JSON读取失败",
+#                 "count": 0,
+#                 "data": []
+#             }
+
+#         # ----------------------------------------------------
+#         # 检查格式
+#         # ----------------------------------------------------
+
+#         if not isinstance(data, list):
+
+#             return {
+#                 "success": False,
+#                 "message": "题库JSON格式不是数组",
+#                 "count": 0,
+#                 "data": []
+#             }
+
+#         return {
+#             "success": True,
+#             "message": "读取成功",
+#             "count": len(data),
+#             "file": str(question_file),
+#             "data": data
+#         }
+
+#     except Exception as e:
+
+#         return {
+#             "success": False,
+#             "message": f"读取题库失败：{e}",
+#             "count": 0,
+#             "data": []
+#         }
+
+
+
+from fastapi import Query
+
+
 @app.get("/api/questions/data")
-def get_questions_data():
+def get_questions_data(
+    dept_id: str = Query(None),
+    dept_type_name: str = Query(None),
+    superior_name: str = Query(None)
+):
 
     try:
 
         # ----------------------------------------------------
         # 查找历史题库（排除 _new.json）
         # ----------------------------------------------------
-
         question_file = find_question_file()
 
         if question_file is None:
 
             return {
                 "success": False,
-                "message":
-                    "questions目录中没有找到历史题库JSON",
+                "message": "questions目录中没有找到历史题库JSON",
                 "count": 0,
                 "data": []
             }
 
+
         # ----------------------------------------------------
         # 读取JSON
         # ----------------------------------------------------
-
         data = read_json_file(
             question_file
         )
+
 
         if data is None:
 
@@ -2361,10 +2507,10 @@ def get_questions_data():
                 "data": []
             }
 
+
         # ----------------------------------------------------
         # 检查格式
         # ----------------------------------------------------
-
         if not isinstance(data, list):
 
             return {
@@ -2374,23 +2520,75 @@ def get_questions_data():
                 "data": []
             }
 
+
+        # ====================================================
+        # 分类筛选
+        # ====================================================
+
+        # 按具体工种ID筛选
+        if dept_id:
+
+            data = [
+                q
+                for q in data
+                if q.get("dept_id") == dept_id
+            ]
+
+
+        # 按大类筛选
+        elif dept_type_name:
+
+            data = [
+                q
+                for q in data
+                if q.get("dept_type_name") == dept_type_name
+            ]
+
+
+        # 按上级队伍筛选
+        elif superior_name:
+
+            data = [
+                q
+                for q in data
+                if q.get("superior_name") == superior_name
+            ]
+
+
+        # ----------------------------------------------------
+        # 返回
+        # ----------------------------------------------------
+
         return {
+
             "success": True,
+
             "message": "读取成功",
+
             "count": len(data),
+
             "file": str(question_file),
+
             "data": data
         }
 
+
     except Exception as e:
 
+
         return {
+
             "success": False,
+
             "message": f"读取题库失败：{e}",
+
             "count": 0,
+
             "data": []
+
         }
 
+        
 
 # ============================================================
 # 30. 获取题库统计（只统计历史题库，排除 _new.json）
@@ -3056,155 +3254,188 @@ def import_questions_to_db(
 #
 # ============================================================
 
+# @app.get("/api/dept/list")
+# def get_dept_list(request: Request):
+#     """
+#     从 Java 后端获取题库分类列表（包含层级结构）
+#     根据当前 Java 登录用户所在矿井过滤分类
+#     """
+#     try:
+#         import requests
+
+#         user = request.session.get("user")
+
+#         print("当前用户:", user.get("user_name"))
+#         print("当前部门:", user.get("subjection_name"))
+#         print("当前矿井ID:", user.get("register_dept_id"))
+#         print("当前矿井:", user.get("register_dept_name"))
+
+#         # 从环境变量读取 Java 后端地址
+#         java_host = os.environ.get('JAVA_HOST', 'localhost')
+#         java_port = os.environ.get('JAVA_PORT', '1100')
+
+#         # 改为调用原来的登录接口
+#         java_api_url = (
+#             f"http://{java_host}:{java_port}"
+#             f"/deptBankType/getExcelTypeSelect"
+#         )
+
+#         print(f"🔗 连接 Java 后端：{java_api_url}")
+
+#         # 获取当前 Python Session 中保存的 Java Token
+#         java_token = request.session.get("java_token")
+
+#         if not java_token:
+#             print("❌ 当前 Python Session 没有 Java Token")
+
+#             return {
+#                 "success": False,
+#                 "message": "Java登录状态已失效，请重新进入通用法规 AI",
+#                 "data": []
+#             }
+
+#         print("✅ 当前 Java Token：已获取")
+
+#         # 携带 Java Token 调用原接口
+#         response = requests.get(
+#             java_api_url,
+#             timeout=10,
+#             headers={
+#                 "Content-Type": "application/json",
+#                 "satoken": java_token
+#             }
+#         )
+#         print("Java HTTP状态:", response.status_code)
+#         print("Java原始返回:")
+#         print(response.text[:5000])
+
+#         if response.status_code == 200:
+
+#             # Java 原接口直接返回数组
+#             data = response.json()
+
+#             if isinstance(data, dict):
+#                 items = data.get("data", [])
+#             else:
+#                 items = data
+
+#             # 构建树形结构
+#             dept_list = []
+#             dept_map = {}
+
+#             # 先全部转换为字典
+#             for item in items:
+
+#                 dept_id = item.get("id")
+
+#                 parent_id = item.get("parentId") or ""
+
+#                 if parent_id == "0":
+#                     parent_id = ""
+
+#                 dept_map[dept_id] = {
+#                     "id": dept_id,
+#                     "name": item.get("name"),
+#                     "code": item.get("code"),
+#                     "parentId": parent_id,
+#                     "superiorId": item.get("superiorId") or "",
+#                     "superiorName": item.get("superiorName"),
+#                     "subjectionId": item.get("subjectionId"),
+#                     "subjectionName": item.get("subjectionName"),
+#                     "isMine": item.get("isMine") or 0,
+#                     "children": []
+#                 }
+
+#             # 构建层级关系
+#             root_list = []
+
+#             for dept_id, dept in dept_map.items():
+
+#                 parent_id = dept["parentId"]
+
+#                 if parent_id and parent_id in dept_map:
+#                     dept_map[parent_id]["children"].append(dept)
+#                 else:
+#                     root_list.append(dept)
+
+#             print(
+#                 f"✅ 成功获取当前用户矿井分类："
+#                 f"{len(root_list)} 个根节点"
+#             )
+
+#             return {
+#                 "success": True,
+#                 "data": root_list
+#             }
+
+#         else:
+
+#             print(
+#                 f"⚠️ Java 返回错误："
+#                 f"{response.status_code}"
+#             )
+
+#             # 这里建议不要再使用本地假数据
+#             # 否则 Java Token 失效后可能看到错误矿井的数据
+#             return {
+#                 "success": False,
+#                 "message": (
+#                     f"获取分类失败：HTTP "
+#                     f"{response.status_code}"
+#                 ),
+#                 "data": []
+#             }
+
+#     except requests.exceptions.ConnectionError:
+
+#         print("❌ Java 后端未连接")
+
+#         return {
+#             "success": False,
+#             "message": "Java 后端未连接",
+#             "data": []
+#         }
+
+#     except Exception as e:
+
+#         print(f"❌ 获取分类异常：{e}")
+
+#         return {
+#             "success": False,
+#             "message": f"获取分类失败：{str(e)}",
+#             "data": []
+#         }
+
+
+
+
 @app.get("/api/dept/list")
 def get_dept_list(request: Request):
-    """
-    从 Java 后端获取题库分类列表（包含层级结构）
-    根据当前 Java 登录用户所在矿井过滤分类
-    """
+
     try:
-        import requests
 
-        user = request.session.get("user")
+        from excel_to_tree import load_category_tree
 
-        print("当前用户:", user.get("user_name"))
-        print("当前部门:", user.get("subjection_name"))
-        print("当前矿井ID:", user.get("register_dept_id"))
-        print("当前矿井:", user.get("register_dept_name"))
 
-        # 从环境变量读取 Java 后端地址
-        java_host = os.environ.get('JAVA_HOST', 'localhost')
-        java_port = os.environ.get('JAVA_PORT', '1100')
+        data = load_category_tree()
 
-        # 改为调用原来的登录接口
-        java_api_url = (
-            f"http://{java_host}:{java_port}"
-            f"/deptBankType/getExcelTypeSelect"
-        )
-
-        print(f"🔗 连接 Java 后端：{java_api_url}")
-
-        # 获取当前 Python Session 中保存的 Java Token
-        java_token = request.session.get("java_token")
-
-        if not java_token:
-            print("❌ 当前 Python Session 没有 Java Token")
-
-            return {
-                "success": False,
-                "message": "Java登录状态已失效，请重新进入通用法规 AI",
-                "data": []
-            }
-
-        print("✅ 当前 Java Token：已获取")
-
-        # 携带 Java Token 调用原接口
-        response = requests.get(
-            java_api_url,
-            timeout=10,
-            headers={
-                "Content-Type": "application/json",
-                "satoken": java_token
-            }
-        )
-        print("Java HTTP状态:", response.status_code)
-        print("Java原始返回:")
-        print(response.text[:5000])
-
-        if response.status_code == 200:
-
-            # Java 原接口直接返回数组
-            data = response.json()
-
-            if isinstance(data, dict):
-                items = data.get("data", [])
-            else:
-                items = data
-
-            # 构建树形结构
-            dept_list = []
-            dept_map = {}
-
-            # 先全部转换为字典
-            for item in items:
-
-                dept_id = item.get("id")
-
-                parent_id = item.get("parentId") or ""
-
-                if parent_id == "0":
-                    parent_id = ""
-
-                dept_map[dept_id] = {
-                    "id": dept_id,
-                    "name": item.get("name"),
-                    "code": item.get("code"),
-                    "parentId": parent_id,
-                    "superiorId": item.get("superiorId") or "",
-                    "superiorName": item.get("superiorName"),
-                    "subjectionId": item.get("subjectionId"),
-                    "subjectionName": item.get("subjectionName"),
-                    "isMine": item.get("isMine") or 0,
-                    "children": []
-                }
-
-            # 构建层级关系
-            root_list = []
-
-            for dept_id, dept in dept_map.items():
-
-                parent_id = dept["parentId"]
-
-                if parent_id and parent_id in dept_map:
-                    dept_map[parent_id]["children"].append(dept)
-                else:
-                    root_list.append(dept)
-
-            print(
-                f"✅ 成功获取当前用户矿井分类："
-                f"{len(root_list)} 个根节点"
-            )
-
-            return {
-                "success": True,
-                "data": root_list
-            }
-
-        else:
-
-            print(
-                f"⚠️ Java 返回错误："
-                f"{response.status_code}"
-            )
-
-            # 这里建议不要再使用本地假数据
-            # 否则 Java Token 失效后可能看到错误矿井的数据
-            return {
-                "success": False,
-                "message": (
-                    f"获取分类失败：HTTP "
-                    f"{response.status_code}"
-                ),
-                "data": []
-            }
-
-    except requests.exceptions.ConnectionError:
-
-        print("❌ Java 后端未连接")
 
         return {
-            "success": False,
-            "message": "Java 后端未连接",
-            "data": []
+            "success": True,
+            "data": data
         }
+
 
     except Exception as e:
 
-        print(f"❌ 获取分类异常：{e}")
+        print(
+            "获取分类异常:",
+            e
+        )
 
         return {
             "success": False,
-            "message": f"获取分类失败：{str(e)}",
+            "message": str(e),
             "data": []
         }
 

@@ -866,7 +866,12 @@ def validate_question(
 
     question["article"] = article
 
-    # ✅ 新增：生成唯一ID
+    # 保存分类信息
+    question["dept_id"] = ""
+    question["dept_name"] = ""
+    question["superior_name"] = ""
+    question["dept_type_name"] = ""
+
     if "id" not in question:
         question["id"] = str(uuid.uuid4())
 
@@ -880,7 +885,8 @@ def validate_question(
 def generate_one_question(
     article,
     content,
-    question_type
+    question_type,
+    dept_info=None
 ):
 
     for retry in range(
@@ -909,6 +915,16 @@ def generate_one_question(
                 article,
                 question_type
             )
+
+            if question and dept_info:
+
+                question["dept_id"] = dept_info.get("id","")
+
+                question["dept_name"] = dept_info.get("fullName","")
+
+                question["superior_name"] = dept_info.get("superiorName","")
+
+                question["dept_type_name"] = dept_info.get("category","")
 
             if question:
 
