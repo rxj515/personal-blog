@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0">
+
+    <title>AI智能题库系统</title>
+
+    <link
+        href="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css"
+        rel="stylesheet">
+
+    <link
+        href="https://cdn.bootcdn.net/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+        rel="stylesheet">
+
+    <link
+        rel="stylesheet"
+        href="/static/css/login.css">
+
+</head>
+
+
+<body class="login-page">
+
+
+    <!-- =========================
+         背景
+         ========================= -->
+
+
+    <div class="login-background"></div>
+
+
+    <!-- =========================
+         登录区域
+         ========================= -->
+
+
+    <div class="login-container">
+
+
+        <div class="login-card">
+
+
+            <!-- Logo -->
+
+            <div class="login-logo">
+
+                <span class="ai-logo">
+                    AI
+                </span>
+
+                <span class="ai-sparkle">
+                    ✦
+                </span>
+
+            </div>
+
+
+            <!-- 标题 -->
+
+            <h3 class="login-title">
+
+                AI 智能题库
+
+            </h3>
+
+
+            <p class="login-subtitle">
+
+                智能出题 · 题库管理 · 知识库
+
+            </p>
+
+
+            <!-- 错误提示 -->
+
+            {% if error %}
+
+            <div
+                class="alert alert-danger"
+                id="loginError">
+
+                <i class="fas fa-circle-exclamation me-2"></i>
+
+                {{ error }}
+
+            </div>
+
+            {% endif %}
+
+
+            <!-- 登录表单 -->
+
+            <form
+                method="POST"
+                action="/login"
+                id="loginForm">
+
+
+                <!-- 用户名 -->
+
+                <div class="form-group">
+
+                    <label class="form-label">
+
+                        登录账号
+
+                    </label>
+
+                    <div class="input-group">
+
+                        <span class="input-group-text">
+
+                            <i class="fas fa-user"></i>
+
+                        </span>
+
+
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="username"
+                            name="username"
+                            placeholder="请输入手机号"
+                            autocomplete="username"
+                            required
+                            autofocus>
+
+                    </div>
+
+                </div>
+
+
+                <!-- 密码 -->
+
+                <div class="form-group">
+
+                    <label class="form-label">
+
+                        登录密码
+
+                    </label>
+
+                    <div class="input-group">
+
+                        <span class="input-group-text">
+
+                            <i class="fas fa-lock"></i>
+
+                        </span>
+
+
+                        <input
+                            type="password"
+                            class="form-control"
+                            id="password"
+                            name="password"
+                            placeholder="请输入密码"
+                            autocomplete="current-password"
+                            required>
+
+
+                        <button
+                            type="button"
+                            class="input-group-text"
+                            id="togglePassword">
+
+                            <i class="fas fa-eye"></i>
+
+                        </button>
+
+                    </div>
+
+                </div>
+
+
+                <!-- 登录按钮 -->
+
+                <button
+                    type="submit"
+                    class="btn-login"
+                    id="loginBtn">
+
+                    <span class="login-btn-content">
+
+                        <i class="fas fa-arrow-right-to-bracket"></i>
+
+                        <span>登 录</span>
+
+                    </span>
+
+                </button>
+
+
+            </form>
+
+
+            <!-- 底部 -->
+
+            <div class="login-footer">
+
+                <div class="footer-main">
+
+                    <i class="fas fa-wand-magic-sparkles"></i>
+
+                    AI 驱动智能题库
+
+                </div>
+
+                <div class="footer-sub">
+
+                    智能出题 · 知识库 · 题库管理
+
+                </div>
+
+            </div>
+
+
+        </div>
+
+
+    </div>
+
+
+    <script
+        src="https://cdn.bootcdn.net/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js">
+    </script>
+
+
+    <script
+        src="/static/js/login.js">
+    </script>
+
+
+</body>
+
+</html>

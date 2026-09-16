@@ -53,11 +53,24 @@ const App = {
             js: '/static/js/question_bank.js'
         },
 
+        // system: {
+        //     url: '/system',
+        //     title: '系统设置',
+        //     css: '/static/css/system.css',
+        //     js: '/static/js/system.js'
+        // }
         system: {
             url: '/system',
             title: '系统设置',
             css: '/static/css/system.css',
             js: '/static/js/system.js'
+        },
+
+        account: {
+            url: '/account',
+            title: '账户管理',
+            css: '/static/css/account_admin.css',
+            js: '/static/js/account_admin.js'
         }
     },
 
@@ -78,54 +91,225 @@ const App = {
      */
 
     init() {
-
         console.log('App 初始化');
-
+    
         this.bindMenu();
-
+    
         this.updateTime();
-
+    
         setInterval(() => {
-
             this.updateTime();
-
         }, 1000);
+    
+        // 加载当前登录用户
+        this.loadCurrentUser();
+
+        // ⭐ 根据角色控制系统设置/账户管理菜单
+        this.updateAdminMenu();
+
 
         // 加载AI配置
         this.loadAIStatus();
 
+
         this.loadGlobalAIConfig();
-
+    
         this.loadPage('dashboard');
-
-        // ✅ 监听 AI 配置变化事件
+    
+        this.updateKnowledgeCount();
+    
+        // 监听 AI 配置变化事件
         document.addEventListener(
             "aiConfigChanged",
             () => {
-
                 console.log(
                     "App 收到配置变化事件，刷新侧边栏"
                 );
-
+    
                 this.updateSidebarAI();
-
-                // ✅ 如果当前在系统设置页面，重新加载页面内容
+    
                 if (this.currentPage === 'system') {
-
                     console.log(
                         "当前在系统设置页面，重新加载页面内容"
                     );
-
-                    // 重新加载 system 页面
+    
                     this.loadPage('system');
-
                 }
-
             }
         );
-
+    
+        // 监听知识库更新事件
+        document.addEventListener(
+            'knowledgeUpdated',
+            () => {
+                console.log(
+                    '📨 收到知识库更新通知，刷新侧边栏数量'
+                );
+    
+                this.updateKnowledgeCount();
+            }
+        );
     },
 
+    // =====================================================
+    // 获取当前登录用户
+    // =====================================================
+    async loadCurrentUser() {
+
+        console.log("====================================");
+        console.log("开始获取当前登录用户");
+        console.log("====================================");
+
+        try {
+
+            const response = await fetch(
+                "/api/user/info",
+                {
+                    method: "GET",
+                    credentials: "include",
+                    headers: {
+                        "Accept": "application/json"
+                    },
+                    cache: "no-store"
+                }
+            );
+
+            console.log(
+                "用户信息接口状态:",
+                response.status
+            );
+
+            if (!response.ok) {
+
+                console.error(
+                    "用户信息接口请求失败:",
+                    response.status,
+                    response.statusText
+                );
+
+                return;
+            }
+
+            const result =
+                await response.json();
+
+            console.log(
+                "用户信息接口返回:",
+                result
+            );
+
+            if (!result || !result.success) {
+
+                console.error(
+                    "用户未登录或接口返回失败:",
+                    result
+                );
+
+                return;
+            }
+
+            const user =
+                result.data || {};
+
+            console.log(
+                "当前登录人:",
+                user.user_name
+            );
+
+            console.log(
+                "当前部门:",
+                user.subjection_name
+            );
+
+            console.log(
+                "当前矿井:",
+                user.register_dept_Name
+            );
+
+            // 用户名
+            const userName =
+                document.getElementById(
+                    "current-user-name"
+                );
+
+            if (userName) {
+
+                userName.textContent =
+                    user.user_name || "未知用户";
+
+            } else {
+
+                console.error(
+                    "找不到 current-user-name"
+                );
+
+            }
+
+            // 部门
+            // const userDept =
+            //     document.getElementById(
+            //         "current-user-dept"
+            //     );
+
+            // if (userDept) {
+
+            //     userDept.textContent =
+            //         user.subjection_name || "未知部门";
+
+            // } else {
+
+            //     console.error(
+            //         "找不到 current-user-dept"
+            //     );
+
+            // }
+
+            // 矿井
+            // const userMine =
+            //     document.getElementById(
+            //         "current-user-mine"
+            //     );
+
+            // if (userMine) {
+
+            //     userMine.textContent =
+            //         user.mine_name || "未知矿井";
+
+            // } else {
+
+            //     console.error(
+            //         "找不到 current-user-mine"
+            //     );
+
+            // }
+
+            console.log(
+                "✅ 当前登录用户显示完成"
+            );
+
+        } catch (error) {
+
+            console.error(
+                "❌ 获取当前登录用户失败:",
+                error
+            );
+
+        }
+    },
+
+    // =====================================================
+    // 退出登录
+    // =====================================================
+    logout() {
+
+        console.log("退出登录");
+
+        if (!confirm("确定要退出登录吗？")) {
+            return;
+        }
+
+        window.location.href = "/logout";
+    },
 
     /*
      * =====================================================
@@ -133,32 +317,99 @@ const App = {
      * =====================================================
      */
 
+    // bindMenu() {
+
+    //     document
+    //         .querySelectorAll('[data-page]')
+    //         .forEach(item => {
+
+    //             item.addEventListener(
+    //                 'click',
+    //                 () => {
+
+    //                     const page =
+    //                         item.dataset.page;
+
+    //                     console.log(
+    //                         '点击菜单：',
+    //                         page
+    //                     );
+
+    //                     this.loadPage(page);
+    //                 }
+    //             );
+
+    //         });
+    // },
+
+
+
     bindMenu() {
 
-        document
-            .querySelectorAll('[data-page]')
-            .forEach(item => {
-
-                item.addEventListener(
-                    'click',
-                    () => {
-
-                        const page =
-                            item.dataset.page;
-
-                        console.log(
-                            '点击菜单：',
-                            page
-                        );
-
-                        this.loadPage(page);
-                    }
+        // =====================================================
+        // 系统设置
+        // 点击系统设置：
+        // 1. 展开/收起账户管理
+        // 2. 保留原来的系统设置页面加载功能
+        // =====================================================
+        const systemMenu =
+            document.querySelector('.system-menu-parent');
+    
+        const submenu =
+            document.querySelector('.submenu');
+    
+        if (systemMenu && submenu) {
+    
+            systemMenu.addEventListener('click', (event) => {
+    
+                event.stopPropagation();
+    
+                // 展开 / 收起子菜单
+                const isOpen =
+                    submenu.classList.toggle('open');
+    
+                systemMenu.classList.toggle(
+                    'expanded',
+                    isOpen
                 );
-
+    
+                console.log(
+                    '系统设置：',
+                    isOpen ? '展开' : '收起'
+                );
+    
+                // 保留原来的系统设置页面功能
+                this.loadPage('system');
+            });
+        }
+    
+    
+        // =====================================================
+        // 其他菜单 + 账户管理
+        // =====================================================
+        document
+            .querySelectorAll(
+                '[data-page]:not(.system-menu-parent)'
+            )
+            .forEach(item => {
+    
+                item.addEventListener('click', (event) => {
+    
+                    event.stopPropagation();
+    
+                    const page =
+                        item.dataset.page;
+    
+                    console.log(
+                        '点击菜单：',
+                        page
+                    );
+    
+                    this.loadPage(page);
+                });
             });
     },
-
-
+    
     /*
      * =====================================================
      * 加载页面
@@ -373,6 +624,7 @@ const App = {
              */
 
             await this.updateSidebarAI();
+            await this.updateKnowledgeCount();
 
 
             /*
@@ -602,6 +854,26 @@ const App = {
                 }
 
                 break;
+
+
+                // =====================================================
+                // 账户管理
+                // =====================================================
+                case 'account':
+                    if (
+                        typeof AccountAdmin !== 'undefined' &&
+                        typeof AccountAdmin.init === 'function'
+                    ) {
+                        console.log(
+                            '调用 AccountAdmin.init()'
+                        );
+                        AccountAdmin.init();
+                    } else {
+                        console.warn(
+                            'AccountAdmin.init 不存在'
+                        );
+                    }
+                    break;
 
 
             /*
@@ -886,23 +1158,23 @@ const App = {
     async updateSidebarAI() {
 
         try {
-
+    
             const result =
                 await window.AppAPI.get(
                     "/api/config"
                 );
-
+    
             if (!result || !result.data) {
                 return;
             }
-
+    
             const config = result.data;
-
+    
             const provider =
                 config.provider ||
                 config.ai ||
                 "ollama";
-
+    
             // AI 服务显示名称映射
             const names = {
                 ollama: "Ollama",
@@ -912,61 +1184,388 @@ const App = {
                 zhipu: "智谱AI",
                 custom: "自定义"
             };
-
+    
             const displayName =
                 names[provider] || provider;
-
+    
             // 侧边栏 AI 服务
             const sidebarService =
                 document.getElementById(
                     "sidebar-ai-service"
                 );
-
+    
             if (sidebarService) {
-
+    
                 sidebarService.textContent =
                     displayName;
             }
-
+    
             // 侧边栏 AI 模型
             const sidebarModel =
                 document.getElementById(
                     "sidebar-ai-model"
                 );
-
+    
             if (sidebarModel) {
-
+    
                 sidebarModel.textContent =
                     config.model || "--";
             }
-
+    
             // 顶部 AI 名称
             const headerAiName =
                 document.getElementById(
                     "header-ai-name"
                 );
-
+    
             if (headerAiName) {
-
+    
                 headerAiName.textContent =
                     displayName;
             }
-
+    
             console.log(
                 "侧边栏 AI 信息已更新：",
                 displayName,
                 config.model
             );
-
+    
         } catch (error) {
-
+    
             console.error(
                 "更新侧边栏 AI 信息失败：",
                 error
             );
         }
+    
+    },
+    
+    // ✅ 在这里加新方法（逗号后面）
+    async updateKnowledgeCount() {
+    
+        try {
+    
+            const result = await window.AppAPI.get("/api/knowledge/statistics");
+    
+            if (!result || !result.success) {
+                console.warn('获取知识库统计失败:', result?.message);
+                return;
+            }
+    
+            const total = result.data?.total;
+    
+            if (total !== undefined && total !== null) {
+                const countEl = document.querySelector('.sidebar-footer .footer-row b');
+                if (countEl) {
+                    countEl.textContent = total + '条';
+                    console.log('✅ 知识库数量已更新：', total);
+                }
+            }
+    
+        } catch (error) {
+    
+            console.error('更新知识库数量失败：', error);
+        }
+    },
+
+
+    // =====================================================
+    // 管理员菜单权限
+    // 控制：
+    // 1. 系统设置
+    // 2. 账户管理
+    // 普通用户隐藏
+    // 管理员显示
+    // =====================================================
+
+    async updateAdminMenu() {
+
+
+        // 系统设置父菜单
+        const systemMenu =
+            document.querySelector(
+                '.system-menu-parent'
+            );
+
+
+        // 账户管理菜单
+        const accountMenu =
+            document.getElementById(
+                "account-menu-item"
+            );
+
+
+        // =====================================================
+        // 默认全部隐藏
+        // =====================================================
+
+        if(systemMenu){
+
+            systemMenu.style.display =
+                "none";
+
+        }
+
+
+        if(accountMenu){
+
+            accountMenu.style.display =
+                "none";
+
+        }
+
+
+
+        try {
+
+
+            const response =
+                await fetch(
+                    "/api/account/me",
+                    {
+                        method:"GET",
+
+                        credentials:"include",
+
+                        headers:{
+                            "Accept":
+                            "application/json"
+                        },
+
+                        cache:"no-store"
+                    }
+                );
+
+
+
+            if(!response.ok){
+
+                console.warn(
+                    "获取权限失败:",
+                    response.status
+                );
+
+                return;
+
+            }
+
+
+
+            const result =
+                await response.json();
+
+
+
+            console.log(
+                "权限信息:",
+                result
+            );
+
+
+
+            // =====================================================
+            // 管理员
+            // =====================================================
+
+            if(
+                result &&
+                result.success &&
+                result.data &&
+                result.data.role === "管理员"
+            ){
+
+
+                // 显示系统设置
+
+                if(systemMenu){
+
+                    systemMenu.style.display =
+                        "";
+
+                }
+
+
+
+                // 显示账户管理
+
+                if(accountMenu){
+
+                    accountMenu.style.display =
+                        "";
+
+                }
+
+
+
+                console.log(
+                    "✅ 管理员，显示系统设置和账户管理"
+                );
+
+
+
+            }else{
+
+
+                console.log(
+                    "普通用户，隐藏系统设置和账户管理"
+                );
+
+
+            }
+
+
+
+        }catch(error){
+
+
+            console.error(
+                "❌ 权限菜单加载失败:",
+                error
+            );
+
+
+            // 出错保持隐藏
+
+
+            if(systemMenu){
+
+                systemMenu.style.display =
+                    "none";
+
+            }
+
+
+            if(accountMenu){
+
+                accountMenu.style.display =
+                    "none";
+
+            }
+
+
+        }
+
 
     },
+
+
+
+
+    // // =====================================================
+    // // 获取当前登录用户
+    // // =====================================================
+    // async loadCurrentUser() {
+
+    //     try {
+
+    //         console.log("开始获取当前登录用户");
+
+    //         const result = await window.AppAPI.get(
+    //             "/api/user/info"
+    //         );
+
+    //         console.log("当前用户接口返回：", result);
+
+    //         if (!result || !result.success) {
+
+    //             console.warn(
+    //                 "当前用户未登录或获取失败"
+    //             );
+
+    //             window.location.href = "/login";
+
+    //             return;
+    //         }
+
+    //         const user = result.data || {};
+
+    //         console.log("当前登录人：", user.user_name);
+    //         console.log(
+    //             "当前部门：",
+    //             user.subjection_name
+    //         );
+    //         console.log(
+    //             "当前矿井：",
+    //             user.register_dept_Name
+    //         );
+
+    //         // -----------------------------
+    //         // 用户名
+    //         // -----------------------------
+    //         const userName =
+    //             document.getElementById(
+    //                 "current-user-name"
+    //             );
+
+    //         if (userName) {
+
+    //             userName.textContent =
+    //                 user.user_name || "未知用户";
+
+    //         }
+
+    //         // -----------------------------
+    //         // 部门
+    //         // -----------------------------
+    //         const userDept =
+    //             document.getElementById(
+    //                 "current-user-dept"
+    //             );
+
+    //         if (userDept) {
+
+    //             userDept.textContent =
+    //                 user.subjection_name || "未知部门";
+
+    //         }
+
+    //         // -----------------------------
+    //         // 矿井
+    //         // -----------------------------
+    //         const userMine =
+    //             document.getElementById(
+    //                 "current-user-mine"
+    //             );
+
+    //         if (userMine) {
+
+    //             userMine.textContent =
+    //                 user.register_dept_Name || "未知矿井";
+
+    //         }
+
+    //         console.log(
+    //             "✅ 当前登录用户信息加载完成"
+    //         );
+
+    //     } catch (error) {
+
+    //         console.error(
+    //             "❌ 获取当前登录用户失败:",
+    //             error
+    //         );
+
+    //     }
+    // },
+
+    // // =====================================================
+    // // 退出登录
+    // // =====================================================
+    // logout() {
+
+    //     const confirmed =
+    //         window.confirm(
+    //             "确定要退出登录吗？"
+    //         );
+
+    //     if (!confirmed) {
+    //         return;
+    //     }
+
+    //     console.log("正在退出登录...");
+
+    //     window.location.href = "/logout";
+    // },
 
 
     /*

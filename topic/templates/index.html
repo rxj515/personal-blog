@@ -9,10 +9,15 @@
       content="width=device-width,initial-scale=1.0">
 
 
-<title>
-通用法规 AI 系统
-</title>
+<!-- 网站图标 -->
+<link rel="icon" 
+      href="/static/images/11.png"
+      type="image/png">
 
+
+<title>
+AI 智能题库系统
+</title>
 
 <link rel="stylesheet"
       href="/static/css/style.css">
@@ -40,40 +45,27 @@
 
     <!-- Logo -->
 
-    <div class="sidebar-brand">
+<!-- Logo -->
+<div class="sidebar-brand">
+
+    <div class="brand-icon">
+        <img src="/static/images/11.png" alt="logo">
+    </div>
 
 
-        <div class="brand-icon">
+    <div class="brand-content">
 
-            AI
-
+        <div class="brand-title">
+            通用法规
         </div>
 
-
-
-        <div class="brand-content">
-
-
-            <div class="brand-title">
-
-                通用法规
-
-            </div>
-
-
-            <div class="brand-subtitle">
-
-                AI智能系统
-
-            </div>
-
-
+        <div class="brand-subtitle">
+            AI智能题库系统
         </div>
-
-
 
     </div>
 
+</div>
 
 
 
@@ -239,25 +231,47 @@
 
 
 
-        <div class="menu-item"
-             data-page="system">
+        <!-- 系统设置 -->
+<div class="menu-item system-menu-parent"
+     data-page="system">
+
+    <span class="menu-icon">
+        ⚙
+    </span>
+
+    <span>
+        系统设置
+    </span>
+
+    <span class="menu-arrow">
+        ›
+    </span>
+
+</div>
 
 
-            <span class="menu-icon">
-
-                ⚙
-
-            </span>
 
 
-            <span>
 
-                系统设置
+<!-- 系统设置子菜单 -->
+<div class="submenu">
+    <div
+        class="menu-item submenu-item"
+        data-page="account"
+        id="account-menu-item"
+        onclick="event.stopPropagation()"
+    >
+        <span class="menu-icon">
+            👤
+        </span>
 
-            </span>
+        <span>
+            账户管理
+        </span>
+    </div>
+</div>
 
 
-        </div>
 
 
 
@@ -271,54 +285,54 @@
 
     <!-- 底部 -->
 
-
     <div class="sidebar-footer">
 
-
-        <!-- <div class="footer-row">
-
-
-            <span>
-
-                知识库
-
-            </span>
-
-
-            <b>
-
-                745条
-
-            </b>
-
-
-        </div> -->
-
-
-
-        <div class="footer-row">
-
-
-            <span>
-
-                系统版本
-
-            </span>
-
-
-            <b>
-
-                v1.0.0
-
-            </b>
-
-
+        <div class="user-card">
+    
+            <div class="user-avatar">
+                <img src="/static/images/12.png" alt="用户头像">
+            </div>
+    
+            <div class="user-detail">
+    
+                <div class="user-name" id="current-user-name">
+                    加载中...
+                </div>
+    
+                <!-- <div class="user-meta">
+                    <span id="current-user-dept">--</span>
+                    <span class="meta-divider">·</span>
+                    <span id="current-user-mine">--</span>
+                </div> -->
+    
+            </div>
+    
         </div>
-
-
-
+    
+        <button
+            type="button"
+            class="logout-btn"
+            onclick="App.logout()"
+        >
+            <span class="logout-icon">⇥</span>
+            <span>退出登录</span>
+        </button>
+    
+        <div class="footer-info">
+    
+            <div class="footer-row">
+                <span>知识库</span>
+                <b>778条</b>
+            </div>
+    
+            <div class="footer-row">
+                <span>系统版本</span>
+                <b>v1.0.0</b>
+            </div>
+    
+        </div>
+    
     </div>
-
 
 
 

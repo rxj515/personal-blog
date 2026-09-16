@@ -25,20 +25,36 @@
 
 import sys
 import json
+import os
 from pathlib import Path
 import asyncio
 
-from fastapi import FastAPI, Body, Request
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi import FastAPI, Body, Request, UploadFile, File, Depends 
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from ai_config import (
     get_ai_config,
+    get_public_ai_config,
     save_ai_config
 )
 
 import uvicorn
+
+# from auth import require_login, get_current_user
+
+from auth import (
+    require_login,
+    get_current_user,
+    _load_users,
+    _save_users,
+    make_password_hash,
+    MIN_PASSWORD_LENGTH
+)
+
+import secrets
+from starlette.middleware.sessions import SessionMiddleware
 
 
 # ============================================================
@@ -81,8 +97,8 @@ PAGES_DIR = TEMPLATES_DIR / "pages"
 # 4. 数据文件
 # ============================================================
 
-# 法规知识库
-KNOWLEDGE_FILE = DATA_DIR / "articles.json"
+# ✅ 新增：知识库目录（每个 PDF 独立存储）
+KNOWLEDGE_DIR = DATA_DIR / "knowledge"
 
 # AI配置文件
 AI_CONFIG_FILE = CONFIG_DIR / "ai_config.json"
@@ -132,6 +148,12 @@ STATIC_DIR.mkdir(
     exist_ok=True
 )
 
+# ✅ 新增：创建 knowledge 目录
+KNOWLEDGE_DIR.mkdir(
+    parents=True, 
+    exist_ok=True
+)
+
 
 # ============================================================
 # 6. FastAPI
@@ -156,6 +178,18 @@ app.mount(
     name="static"
 )
 
+# ✅ 新增：挂载PDF目录
+app.mount(
+    "/pdfs",  # URL访问路径
+    StaticFiles(
+        directory=str(PDF_DIR)  
+    ),
+    name="pdfs"
+)
+
+print(f"\n✅ 静态目录挂载完成：")
+print(f"  /static → {STATIC_DIR}")
+print(f"  /pdfs   → {PDF_DIR}\n")
 
 # ============================================================
 # 8. HTML模板
@@ -164,6 +198,219 @@ app.mount(
 templates = Jinja2Templates(
     directory=str(TEMPLATES_DIR)
 )
+
+# ============================================================
+# Session 中间件
+# ============================================================
+
+# SECRET_KEY = os.environ.get(
+#     'SESSION_SECRET_KEY',
+#     secrets.token_urlsafe(32)
+# )
+
+# SESSION_SECRET_KEY = os.environ.get("SESSION_SECRET_KEY")
+
+# if not SESSION_SECRET_KEY:
+#     raise RuntimeError(
+#         "生产环境必须设置 SESSION_SECRET_KEY 环境变量"
+#     )
+
+# SECRET_KEY = SESSION_SECRET_KEY
+
+
+
+
+# Session 固定密钥
+SESSION_SECRET_KEY = os.environ.get(
+    "SESSION_SECRET_KEY",
+    "dev-test-key-20260915-fixed"
+)
+
+SECRET_KEY = SESSION_SECRET_KEY
+
+
+
+
+
+# ============================================================
+# 全局登录拦截
+# ============================================================
+
+from starlette.middleware.base import BaseHTTPMiddleware
+
+
+# class LoginMiddleware(BaseHTTPMiddleware):
+
+#     async def dispatch(self, request: Request, call_next):
+
+#         path = request.url.path
+
+#         # ==========================================
+#         # 1. 不需要登录的地址
+#         # ==========================================
+#         # public_paths = [
+#         #     "/login",
+#         #     "/sso/login",
+#         #     "/favicon.ico",
+#         # ]
+#         public_paths = [
+#             "/login",
+#             "/favicon.ico",
+#         ]
+
+#         # ==========================================
+#         # 2. 静态资源放行
+#         # ==========================================
+#         if path.startswith("/static/"):
+#             return await call_next(request)
+
+#         # ==========================================
+#         # 3. 登录页、SSO入口放行
+#         # ==========================================
+#         if path in public_paths:
+#             return await call_next(request)
+
+#         # ==========================================
+#         # 4. 检查当前登录用户
+#         # ==========================================
+#         user = await get_current_user(request)
+
+#         # ==========================================
+#         # 5. 没有登录
+#         # ==========================================
+#         if not user:
+
+#             # API 返回 401
+#             if path.startswith("/api/"):
+#                 return JSONResponse(
+#                     status_code=401,
+#                     content={
+#                         "success": False,
+#                         "message": "未登录，请先登录"
+#                     }
+#                 )
+
+#             # 页面跳转到登录页
+#             return RedirectResponse(
+#                 url="/login",
+#                 status_code=303
+#             )
+
+#         # ==========================================
+#         # 6. 已登录
+#         # ==========================================
+#         return await call_next(request)
+
+
+
+class LoginMiddleware(BaseHTTPMiddleware):
+
+    async def dispatch(self, request: Request, call_next):
+
+        path = request.url.path
+
+        # ==========================================
+        # 不需要登录的地址
+        # ==========================================
+        public_paths = [
+            "/login",
+            "/favicon.ico",
+        ]
+
+        # ==========================================
+        # 静态资源放行
+        # ==========================================
+        if path.startswith("/static/"):
+            return await call_next(request)
+
+        # ==========================================
+        # 登录页放行
+        # ==========================================
+        if path in public_paths:
+            return await call_next(request)
+
+        # ==========================================
+        # 检查当前登录用户
+        # ==========================================
+        user = await get_current_user(request)
+
+        # ==========================================
+        # 没有登录
+        # ==========================================
+        if not user:
+
+            # API 返回 401
+            if path.startswith("/api/"):
+                return JSONResponse(
+                    status_code=401,
+                    content={
+                        "success": False,
+                        "message": "未登录，请先登录"
+                    }
+                )
+
+            # 页面跳转登录
+            return RedirectResponse(
+                url="/login",
+                status_code=303
+            )
+
+        # ==========================================
+        # 已登录
+        # ==========================================
+        return await call_next(request)
+
+# ============================================================
+# 注册中间件
+# ============================================================
+
+# 先注册 LoginMiddleware
+
+app.add_middleware(LoginMiddleware)
+
+# app.add_middleware(
+#     SessionMiddleware,
+#     secret_key=SECRET_KEY,
+#     session_cookie="session",
+#     max_age=3600 * 24 * 7,
+#     same_site="lax",
+#     https_only=False,
+#     path="/"
+# )
+
+# app.add_middleware(
+#     SessionMiddleware,
+#     secret_key=SECRET_KEY,
+#     session_cookie="session",
+#     same_site="lax",
+#     https_only=False,
+#     path="/"
+# )
+
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=SECRET_KEY,
+    session_cookie="session",
+    max_age= None,
+    same_site="lax",
+    https_only=False,
+    path="/"
+)
+
+print("✅ Session中间件已启用")
+print("✅ 全局登录拦截已启用")
+
+
+# ============================================================
+# 导入认证模块并注册路由
+# ============================================================
+
+from auth import setup_auth_routes, render_page
+
+setup_auth_routes(app, templates)
+
+print("✅ 认证路由已注册")
 
 
 # ============================================================
@@ -250,79 +497,978 @@ def page_exists(page_name: str):
 # 12. 首页
 # ============================================================
 
+# @app.get("/")
+# async def index(request: Request):
+#     user = await get_current_user(request)
+
+#     if not user:
+#         return RedirectResponse(
+#             url="/login",
+#             status_code=303
+#         )
+
+#     return templates.TemplateResponse(
+#         "index.html",
+#         {"request": request}
+#     )
+
+# @app.get("/")
+# async def index(request: Request):
+#     return templates.TemplateResponse(
+#         "index.html",
+#         {"request": request}
+#     )
+    
+
 @app.get("/")
-def index(request: Request):
+async def index(request: Request):
+    user = await get_current_user(request)
+
+    if not user:
+        return RedirectResponse(
+            url="/login",
+            status_code=303
+        )
 
     return templates.TemplateResponse(
-        request=request,
-        name="index.html"
+        "index.html",
+        {"request": request}
     )
 
-
-# ============================================================
-# 13. 工作台
-# ============================================================
 
 @app.get("/dashboard")
-def dashboard(request: Request):
-
-    return templates.TemplateResponse(
-        request=request,
-        name="pages/dashboard.html"
+async def dashboard(request: Request):
+    return await render_page(
+        request,
+        "pages/dashboard.html"
     )
-
-
-# ============================================================
-# 14. 法规知识库
-# ============================================================
 
 @app.get("/knowledge")
-def knowledge(request: Request):
-
-    return templates.TemplateResponse(
-        request=request,
-        name="pages/knowledge.html"
+async def knowledge(request: Request):
+    return await render_page(
+        request,
+        "pages/knowledge.html"
     )
-
-
-# ============================================================
-# 15. AI智能出题
-# ============================================================
 
 @app.get("/ai-question")
-def ai_question(request: Request):
-
-    return templates.TemplateResponse(
-        request=request,
-        name="pages/ai_question.html"
+async def ai_question(request: Request):
+    return await render_page(
+        request,
+        "pages/ai_question.html"
     )
-
-
-# ============================================================
-# 16. 题库管理
-# ============================================================
 
 @app.get("/question-bank")
-def question_bank(request: Request):
-
-    return templates.TemplateResponse(
-        request=request,
-        name="pages/question_bank.html"
+async def question_bank(request: Request):
+    return await render_page(
+        request,
+        "pages/question_bank.html"
     )
-
-
-# ============================================================
-# 17. 系统设置
-# ============================================================
 
 @app.get("/system")
-def system(request: Request):
-
-    return templates.TemplateResponse(
-        request=request,
-        name="pages/system.html"
+async def system(request: Request):
+    return await render_page(
+        request,
+        "pages/system.html"
     )
 
+@app.get("/account")
+async def account(request: Request):
+    user = await get_current_user(request)
+
+    # 未登录
+    if not user:
+        return RedirectResponse(
+            url="/login",
+            status_code=303
+        )
+
+    # 普通用户禁止进入账户管理
+    if user.get("role") != "管理员":
+        return RedirectResponse(
+            url="/",
+            status_code=303
+        )
+
+    # 管理员正常进入
+    return await render_page(
+        request,
+        "pages/account_admin.html"
+    )
+
+# ============================================================
+# 账户管理 API
+# ============================================================
+
+
+def require_admin(request: Request):
+    """
+    检查当前登录用户是否为管理员
+
+    返回：
+        (True, user, None)       → 允许
+        (False, user, JSONResponse) → 拒绝
+    """
+
+    user = request.session.get("user")
+
+    if not user:
+        return (
+            False,
+            None,
+            JSONResponse(
+                status_code=401,
+                content={
+                    "success": False,
+                    "message": "未登录，请先登录"
+                }
+            )
+        )
+
+    role = user.get("role", "")
+
+    if role != "管理员":
+        return (
+            False,
+            user,
+            JSONResponse(
+                status_code=403,
+                content={
+                    "success": False,
+                    "message": "没有管理员权限"
+                }
+            )
+        )
+
+    return True, user, None
+
+
+# ============================================================
+# 1. 获取账户列表
+#
+# GET /api/account/list
+# ============================================================
+
+@app.get("/api/account/list")
+def account_list(request: Request):
+
+    try:
+
+        # ----------------------------------------------------
+        # 管理员权限检查
+        # ----------------------------------------------------
+
+        allowed, current_user, error_response = require_admin(request)
+
+        if not allowed:
+            return error_response
+
+        # ----------------------------------------------------
+        # 读取用户
+        # ----------------------------------------------------
+
+        users = _load_users()
+
+        result = []
+
+        for user in users:
+
+            if not isinstance(user, dict):
+                continue
+
+            # ------------------------------------------------
+            # ⚠️ 绝对不要返回 password_hash
+            # ------------------------------------------------
+
+            result.append({
+                "user_id": (
+                    user.get("user_id")
+                    or user.get("id")
+                    or ""
+                ),
+
+                "username": (
+                    user.get("username")
+                    or user.get("user_name")
+                    or ""
+                ),
+
+                "user_name": (
+                    user.get("user_name")
+                    or user.get("username")
+                    or ""
+                ),
+
+                "role": user.get(
+                    "role",
+                    "普通用户"
+                ),
+
+                "enabled": user.get(
+                    "enabled",
+                    True
+                ),
+
+                "created_at": user.get(
+                    "created_at"
+                ),
+
+                "last_login": user.get(
+                    "last_login"
+                )
+            })
+
+        return {
+            "success": True,
+            "message": "获取账户列表成功",
+            "data": result
+        }
+
+    except Exception as e:
+
+        print("获取账户列表失败：", e)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"获取账户列表失败：{e}"
+            }
+        )
+
+
+# ============================================================
+# 获取当前账户权限
+#
+# GET /api/account/me
+# ============================================================
+
+@app.get("/api/account/me")
+def account_me(request: Request):
+
+    try:
+
+        current_user = request.session.get(
+            "user"
+        )
+
+
+        if not current_user:
+
+            return {
+                "success":False,
+                "message":"未登录"
+            }
+
+
+
+        return {
+
+            "success":True,
+
+            "data":{
+
+                "role":
+                    current_user.get(
+                        "role",
+                        "普通用户"
+                    )
+
+            }
+
+        }
+
+
+    except Exception as e:
+
+
+        return {
+
+            "success":False,
+
+            "message":str(e)
+
+        }
+        
+# ============================================================
+# 2. 创建账户
+#
+# POST /api/account/create
+#
+# 请求：
+# {
+#     "username": "test",
+#     "password": "xxxxxxxxxxxx",
+#     "enabled": true
+# }
+# ============================================================
+
+@app.post("/api/account/create")
+def account_create(
+    request: Request,
+    data: dict = Body(...)
+):
+
+    try:
+
+        # ----------------------------------------------------
+        # 管理员权限
+        # ----------------------------------------------------
+
+        allowed, current_user, error_response = require_admin(request)
+
+        if not allowed:
+            return error_response
+
+        # ----------------------------------------------------
+        # 参数检查
+        # ----------------------------------------------------
+
+        if not isinstance(data, dict):
+
+            return {
+                "success": False,
+                "message": "参数格式错误"
+            }
+
+        username = str(
+            data.get("username", "")
+        ).strip()
+
+        password = str(
+            data.get("password", "")
+        )
+
+        enabled = data.get(
+            "enabled",
+            True
+        )
+
+        # ----------------------------------------------------
+        # 用户名检查
+        # ----------------------------------------------------
+
+        if not username:
+
+            return {
+                "success": False,
+                "message": "请输入用户名"
+            }
+
+        if len(username) < 2:
+
+            return {
+                "success": False,
+                "message": "用户名至少2个字符"
+            }
+
+        if len(username) > 50:
+
+            return {
+                "success": False,
+                "message": "用户名不能超过50个字符"
+            }
+
+        # ----------------------------------------------------
+        # 密码检查
+        # ----------------------------------------------------
+
+        if not password:
+
+            return {
+                "success": False,
+                "message": "请输入密码"
+            }
+
+        if len(password) < MIN_PASSWORD_LENGTH:
+
+            return {
+                "success": False,
+                "message": (
+                    f"密码至少需要 "
+                    f"{MIN_PASSWORD_LENGTH} 位"
+                )
+            }
+
+        # ----------------------------------------------------
+        # 读取现有账户
+        # ----------------------------------------------------
+
+        users = _load_users()
+
+        # ----------------------------------------------------
+        # 检查用户名是否已经存在
+        # ----------------------------------------------------
+
+        for user in users:
+
+            if not isinstance(user, dict):
+                continue
+
+            old_username = (
+                user.get("username")
+                or user.get("user_name")
+                or ""
+            )
+
+            if old_username.lower() == username.lower():
+
+                return {
+                    "success": False,
+                    "message": f"用户名已存在：{username}"
+                }
+
+        # ----------------------------------------------------
+        # 生成用户ID
+        # ----------------------------------------------------
+
+        import uuid
+        from datetime import datetime
+
+        user_id = (
+            "python-"
+            + uuid.uuid4().hex
+        )
+
+        now = datetime.now().strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+
+        # ----------------------------------------------------
+        # 生成密码Hash
+        #
+        # 使用 auth.py 原有算法
+        # ----------------------------------------------------
+
+        password_hash = make_password_hash(
+            password
+        )
+
+        # ----------------------------------------------------
+        # 创建用户
+        # ----------------------------------------------------
+
+        new_user = {
+            "user_id": user_id,
+            "username": username,
+            "user_name": username,
+
+            # 新创建账户固定普通用户
+            "role": "普通用户",
+
+            "enabled": bool(enabled),
+
+            "password_hash": password_hash,
+
+            "created_at": now,
+            "last_login": None
+        }
+
+        # ----------------------------------------------------
+        # 保存
+        # ----------------------------------------------------
+
+        users.append(new_user)
+
+        _save_users(users)
+
+        print()
+        print("=" * 60)
+        print("创建账户成功")
+        print("=" * 60)
+        print("用户ID :", user_id)
+        print("用户名 :", username)
+        print("角色   : 普通用户")
+        print("状态   :", "启用" if enabled else "禁用")
+        print("=" * 60)
+        print()
+
+        return {
+            "success": True,
+            "message": f"账户创建成功：{username}",
+            "data": {
+                "user_id": user_id,
+                "username": username,
+                "user_name": username,
+                "role": "普通用户",
+                "enabled": bool(enabled),
+                "created_at": now,
+                "last_login": None
+            }
+        }
+
+    except ValueError as e:
+
+        return {
+            "success": False,
+            "message": str(e)
+        }
+
+    except Exception as e:
+
+        print("创建账户失败：", e)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"创建账户失败：{e}"
+            }
+        )
+
+
+# ============================================================
+# 3. 修改密码
+#
+# POST /api/account/password
+#
+# 请求：
+# {
+#     "user_id": "...",
+#     "password": "xxxxxxxxxxxx"
+# }
+# ============================================================
+
+@app.post("/api/account/password")
+def account_password(
+    request: Request,
+    data: dict = Body(...)
+):
+
+    try:
+
+        # ----------------------------------------------------
+        # 管理员权限
+        # ----------------------------------------------------
+
+        allowed, current_user, error_response = require_admin(request)
+
+        if not allowed:
+            return error_response
+
+        # ----------------------------------------------------
+        # 参数
+        # ----------------------------------------------------
+
+        if not isinstance(data, dict):
+
+            return {
+                "success": False,
+                "message": "参数格式错误"
+            }
+
+        user_id = str(
+            data.get("user_id", "")
+        ).strip()
+
+        password = str(
+            data.get("password", "")
+        )
+
+        if not user_id:
+
+            return {
+                "success": False,
+                "message": "缺少 user_id"
+            }
+
+        if not password:
+
+            return {
+                "success": False,
+                "message": "请输入新密码"
+            }
+
+        if len(password) < MIN_PASSWORD_LENGTH:
+
+            return {
+                "success": False,
+                "message": (
+                    f"密码至少需要 "
+                    f"{MIN_PASSWORD_LENGTH} 位"
+                )
+            }
+
+        # ----------------------------------------------------
+        # 读取用户
+        # ----------------------------------------------------
+
+        users = _load_users()
+
+        target_user = None
+
+        for user in users:
+
+            if not isinstance(user, dict):
+                continue
+
+            current_id = (
+                user.get("user_id")
+                or user.get("id")
+                or ""
+            )
+
+            if current_id == user_id:
+
+                target_user = user
+                break
+
+        if target_user is None:
+
+            return {
+                "success": False,
+                "message": "账户不存在"
+            }
+
+        # ----------------------------------------------------
+        # 修改密码
+        # ----------------------------------------------------
+
+        target_user["password_hash"] = (
+            make_password_hash(password)
+        )
+
+        # ----------------------------------------------------
+        # 保存
+        # ----------------------------------------------------
+
+        _save_users(users)
+
+        username = (
+            target_user.get("username")
+            or target_user.get("user_name")
+            or user_id
+        )
+
+        print(
+            f"✅ 管理员修改账户密码：{username}"
+        )
+
+        return {
+            "success": True,
+            "message": "密码修改成功"
+        }
+
+    except ValueError as e:
+
+        return {
+            "success": False,
+            "message": str(e)
+        }
+
+    except Exception as e:
+
+        print("修改密码失败：", e)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"修改密码失败：{e}"
+            }
+        )
+
+
+# ============================================================
+# 4. 启用 / 禁用账户
+#
+# POST /api/account/status
+#
+# 请求：
+# {
+#     "user_id": "...",
+#     "enabled": false
+# }
+# ============================================================
+
+@app.post("/api/account/status")
+def account_status(
+    request: Request,
+    data: dict = Body(...)
+):
+
+    try:
+
+        # ----------------------------------------------------
+        # 管理员权限
+        # ----------------------------------------------------
+
+        allowed, current_user, error_response = require_admin(request)
+
+        if not allowed:
+            return error_response
+
+        if not isinstance(data, dict):
+
+            return {
+                "success": False,
+                "message": "参数格式错误"
+            }
+
+        user_id = str(
+            data.get("user_id", "")
+        ).strip()
+
+        enabled = data.get(
+            "enabled"
+        )
+
+        if not user_id:
+
+            return {
+                "success": False,
+                "message": "缺少 user_id"
+            }
+
+        if not isinstance(enabled, bool):
+
+            return {
+                "success": False,
+                "message": "enabled 参数必须是 true 或 false"
+            }
+
+        # ----------------------------------------------------
+        # 读取用户
+        # ----------------------------------------------------
+
+        users = _load_users()
+
+        target_user = None
+
+        for user in users:
+
+            if not isinstance(user, dict):
+                continue
+
+            current_id = (
+                user.get("user_id")
+                or user.get("id")
+                or ""
+            )
+
+            if current_id == user_id:
+
+                target_user = user
+                break
+
+        if target_user is None:
+
+            return {
+                "success": False,
+                "message": "账户不存在"
+            }
+
+        # ----------------------------------------------------
+        # 管理员账户禁止禁用
+        # ----------------------------------------------------
+
+        if target_user.get("role") == "管理员" and not enabled:
+
+            return {
+                "success": False,
+                "message": "管理员账户不能被禁用"
+            }
+
+        # ----------------------------------------------------
+        # 修改状态
+        # ----------------------------------------------------
+
+        target_user["enabled"] = enabled
+
+        _save_users(users)
+
+        username = (
+            target_user.get("username")
+            or target_user.get("user_name")
+            or user_id
+        )
+
+        print(
+            f"✅ 修改账户状态："
+            f"{username} → "
+            f"{'启用' if enabled else '禁用'}"
+        )
+
+        return {
+            "success": True,
+            "message": (
+                "账户已启用"
+                if enabled
+                else "账户已禁用"
+            ),
+            "data": {
+                "user_id": user_id,
+                "enabled": enabled
+            }
+        }
+
+    except Exception as e:
+
+        print("修改账户状态失败：", e)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"修改账户状态失败：{e}"
+            }
+        )
+
+
+# ============================================================
+# 5. 删除账户
+#
+# POST /api/account/delete
+#
+# 请求：
+# {
+#     "user_id": "..."
+# }
+# ============================================================
+
+@app.post("/api/account/delete")
+def account_delete(
+    request: Request,
+    data: dict = Body(...)
+):
+
+    try:
+
+        # ----------------------------------------------------
+        # 管理员权限
+        # ----------------------------------------------------
+
+        allowed, current_user, error_response = require_admin(request)
+
+        if not allowed:
+            return error_response
+
+        if not isinstance(data, dict):
+
+            return {
+                "success": False,
+                "message": "参数格式错误"
+            }
+
+        user_id = str(
+            data.get("user_id", "")
+        ).strip()
+
+        if not user_id:
+
+            return {
+                "success": False,
+                "message": "缺少 user_id"
+            }
+
+        # ----------------------------------------------------
+        # 当前登录管理员 ID
+        # ----------------------------------------------------
+
+        current_user_id = (
+            current_user.get("user_id")
+            or current_user.get("id")
+            or ""
+        )
+
+        # ----------------------------------------------------
+        # 读取账户
+        # ----------------------------------------------------
+
+        users = _load_users()
+
+        target_user = None
+
+        for user in users:
+
+            if not isinstance(user, dict):
+                continue
+
+            current_id = (
+                user.get("user_id")
+                or user.get("id")
+                or ""
+            )
+
+            if current_id == user_id:
+
+                target_user = user
+                break
+
+        if target_user is None:
+
+            return {
+                "success": False,
+                "message": "账户不存在"
+            }
+
+        # ----------------------------------------------------
+        # 禁止删除自己
+        # ----------------------------------------------------
+
+        if user_id == current_user_id:
+
+            return {
+                "success": False,
+                "message": "不能删除当前登录账户"
+            }
+
+        # ----------------------------------------------------
+        # 禁止删除管理员
+        # ----------------------------------------------------
+
+        if target_user.get("role") == "管理员":
+
+            return {
+                "success": False,
+                "message": "管理员账户不能删除"
+            }
+
+        # ----------------------------------------------------
+        # 删除
+        # ----------------------------------------------------
+
+        username = (
+            target_user.get("username")
+            or target_user.get("user_name")
+            or user_id
+        )
+
+        users = [
+            user
+            for user in users
+            if not (
+                isinstance(user, dict)
+                and (
+                    user.get("user_id")
+                    or user.get("id")
+                    or ""
+                ) == user_id
+            )
+        ]
+
+        _save_users(users)
+
+        print(
+            f"✅ 删除账户成功：{username}"
+        )
+
+        return {
+            "success": True,
+            "message": f"账户已删除：{username}"
+        }
+
+    except Exception as e:
+
+        print("删除账户失败：", e)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"删除账户失败：{e}"
+            }
+        )
+        
 
 # ============================================================
 # 18. 系统配置 API
@@ -356,12 +1502,6 @@ def get_config():
             "http://localhost:11434"
         )
 
-        # ✅ 新增：读取 api_key
-        api_key = ai.get(
-            "api_key",
-            ""
-        )
-
         return {
             "success": True,
             "data": {
@@ -375,9 +1515,6 @@ def get_config():
 
                 "base_url": base_url,
 
-                "api_key": api_key,   # ✅ 新增
-
-                # 为了兼容旧前端
                 "ai": provider
             }
         }
@@ -404,7 +1541,7 @@ def read_ai_config():
 
     try:
 
-        config = get_ai_config()
+        config = get_public_ai_config()
 
         return {
             "success": True,
@@ -422,28 +1559,6 @@ def read_ai_config():
         )
 
 
-# ============================================================
-# 20. 保存AI配置
-#
-# POST /api/system/ai/config
-#
-# 前端可以传：
-#
-# {
-#     "provider": "deepseek",
-#     "model": "deepseek-chat",
-#     "base_url": "https://api.deepseek.com/chat/completions"
-# }
-#
-# 也兼容旧前端：
-#
-# {
-#     "ai": "deepseek",
-#     "model": "deepseek-chat",
-#     "base_url": "..."
-# }
-#
-# ============================================================
 
 # ============================================================
 # 20. 保存AI配置
@@ -527,7 +1642,12 @@ def update_ai_config(
         return {
             "success": True,
             "message": "AI配置保存成功",
-            "data": config
+            "data": {
+                "provider": config["provider"],
+                "model": config["model"],
+                "base_url": config["base_url"],
+                "api_key": "******" if config.get("api_key") else ""
+            }
         }
 
     except Exception as e:
@@ -589,7 +1709,12 @@ def save_config(
         return {
             "success": True,
             "message": "AI配置保存成功",
-            "data": config
+            "data": {
+                "provider": config["provider"],
+                "model": config["model"],
+                "base_url": config["base_url"],
+                "api_key": "******" if config.get("api_key") else ""
+            }
         }
 
     except Exception as e:
@@ -650,9 +1775,6 @@ def system_info():
 
             "pdf_dir":
                 str(PDF_DIR),
-
-            "knowledge_file":
-                str(KNOWLEDGE_FILE),
 
             "ai_config_file":
                 str(AI_CONFIG_FILE),
@@ -716,87 +1838,101 @@ def update_knowledge():
             "message": f"更新失败：{e}"
         }
 
-
 # ============================================================
 # 25. 读取法规知识库
 #
 # GET /api/knowledge/data
-#
 # ============================================================
 
 @app.get("/api/knowledge/data")
-def get_knowledge_data():
-
+def get_knowledge_data(source: str = None):
+    """
+    获取知识库数据
+    - source: PDF名称（不传则返回所有合并）
+    """
     try:
-
-        # ----------------------------------------------------
-        # 检查文件
-        # ----------------------------------------------------
-
-        if not KNOWLEDGE_FILE.exists():
-
+        # 如果没有指定 source，返回所有合并
+        if not source:
+            all_data = []
+            for dir_path in KNOWLEDGE_DIR.iterdir():
+                if dir_path.is_dir():
+                    json_file = dir_path / "articles.json"
+                    if json_file.exists():
+                        with open(json_file, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                            if isinstance(data, list):
+                                all_data.extend(data)
+            article_data = [
+                item for item in all_data
+                if isinstance(item, dict)
+                and item.get("article")
+                and item.get("content")
+            ]
             return {
-                "success": False,
-                "message":
-                    f"找不到法规知识库：{KNOWLEDGE_FILE}",
-                "count": 0,
-                "data": []
+                "success": True,
+                "message": "读取成功",
+                "count": len(article_data),
+                "data": article_data
             }
-
-        # ----------------------------------------------------
-        # 读取JSON
-        # ----------------------------------------------------
-
-        data = read_json_file(
-            KNOWLEDGE_FILE
-        )
-
-        if data is None:
-
+        
+        # ✅ 处理 source：去掉 .pdf 后缀，因为目录名没有 .pdf
+        source_name = source
+        if source_name.endswith('.pdf'):
+            source_name = source_name[:-4]  # 去掉 .pdf
+        
+        # 尝试查找目录
+        target_dir = None
+        
+        # 1. 直接查找去掉 .pdf 的目录名
+        for dir_path in KNOWLEDGE_DIR.iterdir():
+            if dir_path.is_dir() and dir_path.name == source_name:
+                target_dir = dir_path
+                break
+        
+        # 2. 如果没找到，尝试模糊匹配
+        if not target_dir:
+            for dir_path in KNOWLEDGE_DIR.iterdir():
+                if dir_path.is_dir() and source_name in dir_path.name:
+                    target_dir = dir_path
+                    break
+        
+        if not target_dir:
+            # 返回空数据
             return {
-                "success": False,
-                "message": "法规知识库JSON读取失败",
+                "success": True,
+                "data": [],
                 "count": 0,
-                "data": []
+                "source": source,
+                "message": f"未找到知识库：{source_name}"
             }
-
-        # ----------------------------------------------------
-        # 检查格式
-        # ----------------------------------------------------
-
-        if not isinstance(data, list):
-
+        
+        json_file = target_dir / "articles.json"
+        if not json_file.exists():
             return {
-                "success": False,
-                "message": "法规知识库JSON格式不是数组",
-                "count": 0,
-                "data": []
+                "success": True,
+                "data": [],
+                "count": 0
             }
-
-        # ----------------------------------------------------
-        # 过滤有效条文
-        # ----------------------------------------------------
-
+        
+        with open(json_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
         article_data = [
-
-            item
-
-            for item in data
-
+            item for item in data
             if isinstance(item, dict)
             and item.get("article")
             and item.get("content")
         ]
-
+        
         return {
             "success": True,
             "message": "读取成功",
             "count": len(article_data),
-            "data": article_data
+            "data": article_data,
+            "source": source_name
         }
-
+        
     except Exception as e:
-
         return {
             "success": False,
             "message": f"读取知识库失败：{e}",
@@ -805,81 +1941,92 @@ def get_knowledge_data():
         }
 
 
+
 # ============================================================
 # 26. 获取法规知识库统计
 #
 # GET /api/knowledge/statistics
-#
 # ============================================================
 
 @app.get("/api/knowledge/statistics")
-def get_knowledge_statistics():
+def get_knowledge_statistics(
+     request: Request,
+     user: dict = Depends(require_login)
+):
+    
+    user = request.session.get("user")
 
+    print("当前用户:", user.get("user_name"))
+    print("当前部门:", user.get("subjection_name"))
+    print("当前矿井ID:", user.get("register_dept_id"))
+    print("当前矿井:", user.get("register_dept_name"))
     try:
-
-        data = read_json_file(
-            KNOWLEDGE_FILE
-        )
-
-        if not isinstance(data, list):
-
-            return {
-                "success": True,
-                "data": {
-                    "total": 0
-                }
-            }
-
-        valid_data = [
-
-            item
-
-            for item in data
-
-            if isinstance(item, dict)
-            and item.get("article")
-            and item.get("content")
-        ]
-
+        total = 0
+        sources = []
+        
+        for dir_path in KNOWLEDGE_DIR.iterdir():
+            if dir_path.is_dir():
+                json_file = dir_path / "articles.json"
+                if json_file.exists():
+                    with open(json_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                        if isinstance(data, list):
+                            count = len(data)
+                            total += count
+                            sources.append({
+                                "name": dir_path.name,
+                                "count": count
+                            })
+        
         return {
             "success": True,
             "data": {
-                "total": len(valid_data)
+                "total": total,
+                "sources": sources
             }
         }
-
     except Exception as e:
-
         return {
             "success": False,
             "message": f"统计失败：{e}",
             "data": {
-                "total": 0
+                "total": 0,
+                "sources": []
             }
         }
 
+        
 
-# ============================================================
-# 27. AI生成题目（普通模式，保留兼容）
-#
-# POST /api/questions/generate
-#
-# 注意：
-# 1. AI模型不从前端传递
-# 2. AI模型统一读取 config/ai_config.json
-# 3. main.py 不负责AI调用
-# 4. generate_questions.py 不需要接收 model
-#
-# ============================================================
+def get_category_by_superior_name(superior_name):
+    """
+    根据上级名称，自动归类到大类
+    """
+    SUPERIOR_TO_CATEGORY = {
+        "综采": "采煤类",
+        "综采一队": "采煤类",
+        "掘进开拓": "掘进类",
+        "掘进二队": "掘进类",
+        "运输": "运输类",
+        "机运队": "运输类",
+        "机电": "机电类",
+        "机电运输": "机电类",
+        "地面机电队": "机电类",
+        "通风队": "通风类",
+        "通风": "通风类",
+        "安全": "安全类",
+        "安监部门": "安全类",
+        "抽采": "抽采类",
+        "探水": "探水类",
+        "监控信息": "监控类",
+        "鑫隆煤业": "全部工种",
+        "荣大煤业": "全部工种",
+        "惠安煤业": "全部工种",
+        "煤业公司": "全部工种",
+        None: "全部工种"
+    }
+    return SUPERIOR_TO_CATEGORY.get(superior_name, "全部工种")
 
-# ============================================================
-# 28. AI生成题目（流式模式 - SSE）
-#
-# POST /api/questions/generate-stream
-#
-# 每生成一道题就立即通过 SSE 推送给前端
-#
-# ============================================================
+
 
 @app.post("/api/questions/generate-stream")
 async def generate_questions_stream(
@@ -943,7 +2090,30 @@ async def generate_questions_stream(
             )
 
         # ----------------------------------------------------
-        # 3. 设置AI服务商
+        # 3. 接收分类（工种）信息
+        # ----------------------------------------------------
+
+        dept = data.get("dept", {})
+        dept_id = dept.get("id", "")
+        dept_name = dept.get("fullName", "")
+        superior_name = dept.get("superiorName", "")
+
+        # ----------------------------------------------------
+        # 4. ✅ 获取当前选中的 PDF（从请求中读取 source）
+        # ----------------------------------------------------
+
+        source = data.get("source", "")
+
+        # 如果没有传 source，从配置读取当前使用的 PDF
+        if not source:
+            config_file = CONFIG_DIR / "pdf_config.json"
+            if config_file.exists():
+                with open(config_file, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                    source = config.get("current_pdf", "")
+
+        # ----------------------------------------------------
+        # 5. 设置AI服务商
         # ----------------------------------------------------
 
         import ai_client
@@ -951,13 +2121,13 @@ async def generate_questions_stream(
         ai_client.set_ai_type(provider)
 
         # ----------------------------------------------------
-        # 4. 导入出题模块
+        # 6. 导入出题模块
         # ----------------------------------------------------
 
         import generate_questions as question_generator
 
         # ----------------------------------------------------
-        # 5. 创建 SSE 流式生成器
+        # 7. 创建 SSE 流式生成器
         # ----------------------------------------------------
 
         async def event_generator():
@@ -970,25 +2140,50 @@ async def generate_questions_stream(
             success_count = 0
             failed_count = 0
 
-            # 重新加载法规知识库（使用外层的 BASE_DIR）
-            articles_file = BASE_DIR / "data" / "articles.json"
+            # ====================================================
+            # ✅ 8. 根据 source 读取对应的知识库
+            # ====================================================
 
-            if not articles_file.exists():
-                yield f"data: {json.dumps({'type': 'error', 'message': '找不到法规知识库'})}\n\n"
-                return
+            articles = []
+            law_name = "法规"
 
-            try:
-                with open(articles_file, "r", encoding="utf-8") as f:
-                    articles = json.load(f)
-            except Exception as e:
-                yield f"data: {json.dumps({'type': 'error', 'message': f'读取法规知识库失败：{e}'})}\n\n"
+            if source:
+                # 去掉 .pdf 后缀
+                source_name = source
+                if source_name.endswith('.pdf'):
+                    source_name = source_name[:-4]
+
+                # 读取对应目录的知识库
+                json_file = KNOWLEDGE_DIR / source_name / "articles.json"
+                if json_file.exists():
+                    with open(json_file, "r", encoding="utf-8") as f:
+                        articles = json.load(f)
+                    print(f"📄 出题使用知识库：{source_name}")
+                    law_name = source_name
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'message': f'找不到知识库：{source_name}'})}\n\n"
+                    return
+            else:
+                # 没有指定 source，合并所有知识库
+                for dir_path in KNOWLEDGE_DIR.iterdir():
+                    if dir_path.is_dir():
+                        json_file = dir_path / "articles.json"
+                        if json_file.exists():
+                            with open(json_file, "r", encoding="utf-8") as f:
+                                data = json.load(f)
+                                if isinstance(data, list):
+                                    articles.extend(data)
+                print(f"📄 出题使用全部知识库，共 {len(articles)} 条")
+
+            if not articles:
+                yield f"data: {json.dumps({'type': 'error', 'message': '没有找到可用的法规知识库'})}\n\n"
                 return
 
             if not isinstance(articles, list):
                 yield f"data: {json.dumps({'type': 'error', 'message': '法规知识库格式错误'})}\n\n"
                 return
 
-            # 获取法规名称
+            # 获取法规名称（从第一条数据中提取）
             law_names = {
                 item.get("law_name")
                 for item in articles
@@ -998,7 +2193,7 @@ async def generate_questions_stream(
             if law_names:
                 law_name = list(law_names)[0]
             else:
-                law_name = "法规"
+                law_name = source if source else "法规"
 
             # 获取可出题条文
             article_list = [
@@ -1013,6 +2208,22 @@ async def generate_questions_stream(
             if not article_list:
                 yield f"data: {json.dumps({'type': 'error', 'message': '没有找到可用于出题的法规条文'})}\n\n"
                 return
+
+            # ----------------------------------------------------
+            # ✅ 根据上级名称（大类）过滤法条
+            # ----------------------------------------------------
+
+            if superior_name:
+                dept_category = get_category_by_superior_name(superior_name)
+
+                article_list = [
+                    item for item in article_list
+                    if item.get("dept_type_name") == dept_category
+                    or item.get("dept_type_name") == "全部工种"
+                ]
+
+                if not article_list:
+                    print(f"⚠️ 大类 [{dept_category}] 没有匹配到法条，使用全部法条")
 
             # 生成题型计划
             import random
@@ -1059,7 +2270,6 @@ async def generate_questions_stream(
 
                 current_type = type_plan[success_count]
 
-                # 找可用法规
                 available = [
                     item
                     for item in article_list
@@ -1081,11 +2291,16 @@ async def generate_questions_stream(
                 article = item.get("article", "")
                 content = item.get("content", "")
 
-                # 生成题目
                 question = question_generator.generate_one_question(
                     article,
                     content,
-                    current_type
+                    current_type,
+                    {
+                        "id": dept_id,
+                        "fullName": dept_name,
+                        "superiorName": superior_name,
+                        "category": dept_category
+                    }
                 )
 
                 if question is None:
@@ -1094,18 +2309,15 @@ async def generate_questions_stream(
                     yield f"data: {json.dumps({'type': 'progress', 'message': f'第 {success_count + 1} 题生成失败，正在重试...', 'success': success_count, 'failed': failed_count, 'total': count})}\n\n"
                     continue
 
-                # 验证题型
                 if question.get("title_category_name") != current_type:
                     failed_questions.add((article, current_type))
                     failed_count += 1
                     continue
 
-                # 保存题目
                 new_questions.append(question)
                 used_questions.add((article, current_type))
                 success_count += 1
 
-                # 每次生成后保存 _new.json
                 try:
                     with open(new_questions_file, "w", encoding="utf-8") as f:
                         json.dump(new_questions, f, ensure_ascii=False, indent=2)
@@ -1113,13 +2325,10 @@ async def generate_questions_stream(
                     yield f"data: {json.dumps({'type': 'error', 'message': f'保存新题失败：{e}'})}\n\n"
                     return
 
-                # 推送这道题给前端
                 yield f"data: {json.dumps({'type': 'question', 'question': question, 'index': success_count, 'total': count, 'success': success_count, 'failed': failed_count})}\n\n"
 
-                # 小延迟，让前端有时间渲染
                 await asyncio.sleep(0.1)
 
-            # 所有题目生成完成后，统一追加到历史题库
             if new_questions:
                 try:
                     current_history = []
@@ -1140,7 +2349,6 @@ async def generate_questions_stream(
                 except Exception as e:
                     yield f"data: {json.dumps({'type': 'error', 'message': f'追加历史题库失败：{e}'})}\n\n"
 
-            # 发送完成信号
             yield f"data: {json.dumps({'type': 'end', 'message': f'生成完成，共生成 {success_count} 道题', 'total': success_count, 'questions': new_questions})}\n\n"
 
         # ====================================================
@@ -1176,6 +2384,8 @@ async def generate_questions_stream(
             }
         )
         
+
+        
 # ============================================================
 # 29. 读取最新题库（只读历史题库，排除 _new.json）
 #
@@ -1183,34 +2393,110 @@ async def generate_questions_stream(
 #
 # ============================================================
 
+# @app.get("/api/questions/data")
+# def get_questions_data():
+
+#     try:
+
+#         # ----------------------------------------------------
+#         # 查找历史题库（排除 _new.json）
+#         # ----------------------------------------------------
+
+#         question_file = find_question_file()
+
+#         if question_file is None:
+
+#             return {
+#                 "success": False,
+#                 "message":
+#                     "questions目录中没有找到历史题库JSON",
+#                 "count": 0,
+#                 "data": []
+#             }
+
+#         # ----------------------------------------------------
+#         # 读取JSON
+#         # ----------------------------------------------------
+
+#         data = read_json_file(
+#             question_file
+#         )
+
+#         if data is None:
+
+#             return {
+#                 "success": False,
+#                 "message": "题库JSON读取失败",
+#                 "count": 0,
+#                 "data": []
+#             }
+
+#         # ----------------------------------------------------
+#         # 检查格式
+#         # ----------------------------------------------------
+
+#         if not isinstance(data, list):
+
+#             return {
+#                 "success": False,
+#                 "message": "题库JSON格式不是数组",
+#                 "count": 0,
+#                 "data": []
+#             }
+
+#         return {
+#             "success": True,
+#             "message": "读取成功",
+#             "count": len(data),
+#             "file": str(question_file),
+#             "data": data
+#         }
+
+#     except Exception as e:
+
+#         return {
+#             "success": False,
+#             "message": f"读取题库失败：{e}",
+#             "count": 0,
+#             "data": []
+#         }
+
+
+
+from fastapi import Query
+
+
 @app.get("/api/questions/data")
-def get_questions_data():
+def get_questions_data(
+    dept_id: str = Query(None),
+    dept_type_name: str = Query(None),
+    superior_name: str = Query(None)
+):
 
     try:
 
         # ----------------------------------------------------
         # 查找历史题库（排除 _new.json）
         # ----------------------------------------------------
-
         question_file = find_question_file()
 
         if question_file is None:
 
             return {
                 "success": False,
-                "message":
-                    "questions目录中没有找到历史题库JSON",
+                "message": "questions目录中没有找到历史题库JSON",
                 "count": 0,
                 "data": []
             }
 
+
         # ----------------------------------------------------
         # 读取JSON
         # ----------------------------------------------------
-
         data = read_json_file(
             question_file
         )
+
 
         if data is None:
 
@@ -1221,10 +2507,10 @@ def get_questions_data():
                 "data": []
             }
 
+
         # ----------------------------------------------------
         # 检查格式
         # ----------------------------------------------------
-
         if not isinstance(data, list):
 
             return {
@@ -1234,23 +2520,75 @@ def get_questions_data():
                 "data": []
             }
 
+
+        # ====================================================
+        # 分类筛选
+        # ====================================================
+
+        # 按具体工种ID筛选
+        if dept_id:
+
+            data = [
+                q
+                for q in data
+                if q.get("dept_id") == dept_id
+            ]
+
+
+        # 按大类筛选
+        elif dept_type_name:
+
+            data = [
+                q
+                for q in data
+                if q.get("dept_type_name") == dept_type_name
+            ]
+
+
+        # 按上级队伍筛选
+        elif superior_name:
+
+            data = [
+                q
+                for q in data
+                if q.get("superior_name") == superior_name
+            ]
+
+
+        # ----------------------------------------------------
+        # 返回
+        # ----------------------------------------------------
+
         return {
+
             "success": True,
+
             "message": "读取成功",
+
             "count": len(data),
+
             "file": str(question_file),
+
             "data": data
         }
 
+
     except Exception as e:
 
+
         return {
+
             "success": False,
+
             "message": f"读取题库失败：{e}",
+
             "count": 0,
+
             "data": []
+
         }
 
+        
 
 # ============================================================
 # 30. 获取题库统计（只统计历史题库，排除 _new.json）
@@ -1667,156 +3005,441 @@ def export_questions(
 #
 # ============================================================
 
-# @app.post("/api/questions/import")
-# def import_questions_to_db(
-#     data: dict = Body(...)
-# ):
+@app.post("/api/questions/import")
+def import_questions_to_db(
+    request: Request,
+    data: dict = Body(...),
+    user: dict = Depends(require_login)
+):
+    """
+    将题目导入到MySQL数据库
+
+    当前登录用户：
+        Python Session 中的用户
+
+    Java Token：
+        Python Session 中的 java_token
+
+    调用链：
+        Python → Java Gateway → Java导入接口 → MySQL
+    """
+
+    try:
+
+        # ====================================================
+        # 1. 当前登录用户
+        # ====================================================
+
+        user_id = user.get("id")
+        user_name = user.get("user_name")
+        dept_name = user.get("subjection_name")
+
+        # 这里你原来写的是 register_dept_Name
+        # 注意大小写应该和 get_current_user() 返回的数据一致
+        mine_name = user.get("register_dept_name")
+
+        print("========================================")
+        print("       当前导入操作用户")
+        print("========================================")
+        print(f"用户ID   : {user_id}")
+        print(f"用户     : {user_name}")
+        print(f"部门     : {dept_name}")
+        print(f"矿井     : {mine_name}")
+        print("========================================")
+
+        # ====================================================
+        # 2. 获取当前 Java 登录 Token
+        # ====================================================
+
+        java_token = request.session.get("java_token")
+
+        if not java_token:
+
+            print("❌ 当前 Python Session 没有 Java Token")
+
+            return JSONResponse(
+                status_code=401,
+                content={
+                    "success": False,
+                    "message": "Java登录状态已失效，请重新进入通用法规 AI"
+                }
+            )
+
+        print("✅ 当前 Java Token：已获取")
+
+        # ====================================================
+        # 3. 强制使用当前登录用户
+        # ====================================================
+
+        data["create_user_id"] = user_id
+        data["create_user_name"] = user_name
+        data["create_dept_name"] = dept_name
+        data["create_mine_name"] = mine_name
+
+        print()
+
+        print("=" * 60)
+        print("开始导入题目到数据库")
+        print("=" * 60)
+
+        # ====================================================
+        # 4. 参数检查
+        # ====================================================
+
+        if not isinstance(data, dict):
+
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "导入参数必须是对象"
+                }
+            )
+
+        # ====================================================
+        # 5. 获取题目
+        # ====================================================
+
+        questions = data.get(
+            "questions",
+            []
+        )
+
+        if not isinstance(
+            questions,
+            list
+        ):
+
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "questions必须是数组"
+                }
+            )
+
+        # ====================================================
+        # 6. 数量检查
+        # ====================================================
+
+        if len(questions) == 0:
+
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "没有可导入的题目"
+                }
+            )
+
+        print()
+        print(
+            f"准备导入：{len(questions)} 道题"
+        )
+
+        # ====================================================
+        # 7. 导入数据库模块
+        # ====================================================
+
+        import import_questions_db
+
+        # ====================================================
+        # 8. 调用 Java 导入函数
+        #
+        # 关键：
+        # 把当前 Java Token 传进去
+        # ====================================================
+
+        result = import_questions_db.main(
+            data=data,
+            java_token=java_token
+        )
+
+        # ====================================================
+        # 9. 检查返回
+        # ====================================================
+
+        if result is None:
+
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": "导入程序没有返回结果"
+                }
+            )
+
+        # ====================================================
+        # 10. 返回结果
+        # ====================================================
+
+        print()
+
+        print("=" * 60)
+        print("导入完成")
+        print()
+        print(
+            f"处理：{result.get('total', 0)} 道"
+        )
+        print(
+            f"成功：{result.get('inserted', 0)} 道"
+        )
+        print(
+            f"跳过：{result.get('skipped', 0)} 道"
+        )
+        print("=" * 60)
+        print()
+
+        return {
+            "success": True,
+            "message": (
+                f"成功导入 "
+                f"{result.get('inserted', 0)} 道题"
+            ),
+            "data": result
+        }
+
+    # ========================================================
+    # 11. 找不到导入模块
+    # ========================================================
+
+    except ModuleNotFoundError as e:
+
+        print()
+        print("找不到 import_questions_db.py")
+        print(e)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": (
+                    "找不到 import_questions_db.py，"
+                    "请检查文件是否存在"
+                )
+            }
+        )
+
+    # ========================================================
+    # 12. 其他异常
+    # ========================================================
+
+    except Exception as e:
+
+        print()
+
+        print("=" * 60)
+        print("导入数据库失败")
+        print("=" * 60)
+
+        print(e)
+
+        print()
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": (
+                    f"导入数据库失败：{e}"
+                )
+            }
+        )
+
+
+# ============================================================
+# 获取题库分类列表（从 Java 后端获取）
+#
+# GET /api/dept/list
+#
+# ============================================================
+
+# @app.get("/api/dept/list")
+# def get_dept_list(request: Request):
 #     """
-#     将题目导入到MySQL数据库
+#     从 Java 后端获取题库分类列表（包含层级结构）
+#     根据当前 Java 登录用户所在矿井过滤分类
 #     """
 #     try:
+#         import requests
 
-#         print()
-#         print("=" * 60)
-#         print("开始导入题目到数据库")
-#         print("=" * 60)
+#         user = request.session.get("user")
 
-#         # ----------------------------------------------------
-#         # 参数检查
-#         # ----------------------------------------------------
+#         print("当前用户:", user.get("user_name"))
+#         print("当前部门:", user.get("subjection_name"))
+#         print("当前矿井ID:", user.get("register_dept_id"))
+#         print("当前矿井:", user.get("register_dept_name"))
 
-#         if not isinstance(data, dict):
+#         # 从环境变量读取 Java 后端地址
+#         java_host = os.environ.get('JAVA_HOST', 'localhost')
+#         java_port = os.environ.get('JAVA_PORT', '1100')
 
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={
-#                     "success": False,
-#                     "message": "导入参数必须是对象"
-#                 }
-#             )
-
-#         # ----------------------------------------------------
-#         # 获取题目
-#         # ----------------------------------------------------
-
-#         questions = data.get(
-#             "questions",
-#             []
+#         # 改为调用原来的登录接口
+#         java_api_url = (
+#             f"http://{java_host}:{java_port}"
+#             f"/deptBankType/getExcelTypeSelect"
 #         )
 
-#         if not isinstance(
-#             questions,
-#             list
-#         ):
+#         print(f"🔗 连接 Java 后端：{java_api_url}")
 
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={
-#                     "success": False,
-#                     "message": "questions必须是数组"
-#                 }
-#             )
+#         # 获取当前 Python Session 中保存的 Java Token
+#         java_token = request.session.get("java_token")
 
-#         # ----------------------------------------------------
-#         # 数量检查
-#         # ----------------------------------------------------
+#         if not java_token:
+#             print("❌ 当前 Python Session 没有 Java Token")
 
-#         if len(questions) == 0:
+#             return {
+#                 "success": False,
+#                 "message": "Java登录状态已失效，请重新进入通用法规 AI",
+#                 "data": []
+#             }
 
-#             return JSONResponse(
-#                 status_code=400,
-#                 content={
-#                     "success": False,
-#                     "message": "没有可导入的题目"
-#                 }
-#             )
+#         print("✅ 当前 Java Token：已获取")
 
-#         print()
-#         print(
-#             f"准备导入：{len(questions)} 道题"
+#         # 携带 Java Token 调用原接口
+#         response = requests.get(
+#             java_api_url,
+#             timeout=10,
+#             headers={
+#                 "Content-Type": "application/json",
+#                 "satoken": java_token
+#             }
 #         )
+#         print("Java HTTP状态:", response.status_code)
+#         print("Java原始返回:")
+#         print(response.text[:5000])
 
-        # ----------------------------------------------------
-        # 导入数据库模块
-        # ----------------------------------------------------
+#         if response.status_code == 200:
 
-        # import import_questions_db
+#             # Java 原接口直接返回数组
+#             data = response.json()
 
-        # ----------------------------------------------------
-        # 调用导入函数
-        # ----------------------------------------------------
+#             if isinstance(data, dict):
+#                 items = data.get("data", [])
+#             else:
+#                 items = data
 
-        # result = import_questions_db.main(
-        #     data=data
-        # )
+#             # 构建树形结构
+#             dept_list = []
+#             dept_map = {}
 
-        # ----------------------------------------------------
-        # 检查返回
-        # ----------------------------------------------------
+#             # 先全部转换为字典
+#             for item in items:
 
-        # if result is None:
+#                 dept_id = item.get("id")
 
-        #     return JSONResponse(
-        #         status_code=500,
-        #         content={
-        #             "success": False,
-        #             "message": "导入程序没有返回结果"
-        #         }
-        #     )
+#                 parent_id = item.get("parentId") or ""
 
-        # ----------------------------------------------------
-        # 返回结果
-        # ----------------------------------------------------
+#                 if parent_id == "0":
+#                     parent_id = ""
 
-    #     print()
-    #     print("=" * 60)
-    #     print("导入完成")
-    #     print()
-    #     print(f"处理：{result.get('total', 0)} 道")
-    #     print(f"成功：{result.get('inserted', 0)} 道")
-    #     print(f"跳过：{result.get('skipped', 0)} 道")
-    #     print("=" * 60)
-    #     print()
+#                 dept_map[dept_id] = {
+#                     "id": dept_id,
+#                     "name": item.get("name"),
+#                     "code": item.get("code"),
+#                     "parentId": parent_id,
+#                     "superiorId": item.get("superiorId") or "",
+#                     "superiorName": item.get("superiorName"),
+#                     "subjectionId": item.get("subjectionId"),
+#                     "subjectionName": item.get("subjectionName"),
+#                     "isMine": item.get("isMine") or 0,
+#                     "children": []
+#                 }
 
-    #     return {
-    #         "success": True,
-    #         "message": f"成功导入 {result.get('inserted', 0)} 道题",
-    #         "data": result
-    #     }
+#             # 构建层级关系
+#             root_list = []
 
-    # except ModuleNotFoundError as e:
+#             for dept_id, dept in dept_map.items():
 
-    #     print()
-    #     print("找不到 import_questions_db.py")
-    #     print(e)
+#                 parent_id = dept["parentId"]
 
-    #     return JSONResponse(
-    #         status_code=500,
-    #         content={
-    #             "success": False,
-    #             "message": "找不到 import_questions_db.py，请检查文件是否存在"
-    #         }
-    #     )
+#                 if parent_id and parent_id in dept_map:
+#                     dept_map[parent_id]["children"].append(dept)
+#                 else:
+#                     root_list.append(dept)
 
-    # except Exception as e:
+#             print(
+#                 f"✅ 成功获取当前用户矿井分类："
+#                 f"{len(root_list)} 个根节点"
+#             )
 
-    #     print()
-    #     print("=" * 60)
-    #     print("导入数据库失败")
-    #     print("=" * 60)
-    #     print(e)
-    #     print()
+#             return {
+#                 "success": True,
+#                 "data": root_list
+#             }
 
-    #     return JSONResponse(
-    #         status_code=500,
-    #         content={
-    #             "success": False,
-    #             "message": f"导入数据库失败：{e}"
-    #         }
-    #     )
+#         else:
 
-        
+#             print(
+#                 f"⚠️ Java 返回错误："
+#                 f"{response.status_code}"
+#             )
 
+#             # 这里建议不要再使用本地假数据
+#             # 否则 Java Token 失效后可能看到错误矿井的数据
+#             return {
+#                 "success": False,
+#                 "message": (
+#                     f"获取分类失败：HTTP "
+#                     f"{response.status_code}"
+#                 ),
+#                 "data": []
+#             }
+
+#     except requests.exceptions.ConnectionError:
+
+#         print("❌ Java 后端未连接")
+
+#         return {
+#             "success": False,
+#             "message": "Java 后端未连接",
+#             "data": []
+#         }
+
+#     except Exception as e:
+
+#         print(f"❌ 获取分类异常：{e}")
+
+#         return {
+#             "success": False,
+#             "message": f"获取分类失败：{str(e)}",
+#             "data": []
+#         }
+
+
+
+
+@app.get("/api/dept/list")
+def get_dept_list(request: Request):
+
+    try:
+
+        from excel_to_tree import load_category_tree
+
+
+        data = load_category_tree()
+
+
+        return {
+            "success": True,
+            "data": data
+        }
+
+
+    except Exception as e:
+
+        print(
+            "获取分类异常:",
+            e
+        )
+
+        return {
+            "success": False,
+            "message": str(e),
+            "data": []
+        }
+
+    
 # ============================================================
 # 33. 获取页面列表
 #
@@ -1870,6 +3493,798 @@ def get_pages():
     }
 
 
+
+# ============================================================
+# PDF 上传接口
+# POST /api/pdf/upload
+# ============================================================
+
+import hashlib
+
+@app.post("/api/pdf/upload")
+async def upload_pdf(
+    files: list[UploadFile] = File(...)
+):
+    """
+    上传 PDF 文件到服务器
+    """
+    try:
+        # ✅ 如果没有上传任何文件
+        if not files:
+            return {
+                "success": False,
+                "message": "没有选择任何文件",
+                "data": []
+            }
+        
+        uploaded_files = []
+        duplicate_files = []
+        skipped_files = []  # 非PDF文件
+        
+        for file in files:
+            # 检查是否是 PDF
+            if not file.filename.endswith('.pdf'):
+                skipped_files.append({
+                    "filename": file.filename,
+                    "reason": "不是PDF文件"
+                })
+                continue
+            
+            # ✅ 安全处理文件名
+            filename = file.filename.replace('/', '_').replace('\\', '_').replace(' ', '_')
+            
+            # ✅ 读取文件内容
+            content = await file.read()
+            
+            # ✅ 计算文件 MD5
+            md5_hash = hashlib.md5(content).hexdigest()
+            
+            # ✅ 检查是否存在相同 MD5 的文件
+            is_duplicate = False
+            duplicate_info = None
+            for existing_file in PDF_DIR.iterdir():
+                if existing_file.is_file() and existing_file.suffix == '.pdf':
+                    with open(existing_file, 'rb') as f:
+                        existing_md5 = hashlib.md5(f.read()).hexdigest()
+                        if existing_md5 == md5_hash:
+                            is_duplicate = True
+                            duplicate_info = {
+                                "filename": file.filename,
+                                "existing_file": existing_file.name,
+                                "reason": "文件内容完全相同"
+                            }
+                            break
+            
+            if is_duplicate:
+                duplicate_files.append(duplicate_info)
+                continue
+            
+            # ✅ 如果文件名已存在，添加序号
+            file_path = PDF_DIR / filename
+            if file_path.exists():
+                base = file_path.stem
+                ext = file_path.suffix
+                counter = 1
+                while file_path.exists():
+                    file_path = PDF_DIR / f"{base}_{counter}{ext}"
+                    counter += 1
+            
+            # 保存文件
+            with open(file_path, "wb") as buffer:
+                buffer.write(content)
+            
+            uploaded_files.append({
+                "filename": file_path.name,
+                "size": file_path.stat().st_size,
+                "md5": md5_hash
+            })
+        
+        # ✅ 构建详细的返回信息
+        total = len(files)
+        uploaded_count = len(uploaded_files)
+        duplicate_count = len(duplicate_files)
+        skipped_count = len(skipped_files)
+        
+        # ✅ 智能构建消息
+        if uploaded_count == 0 and duplicate_count > 0:
+            # 所有文件都是重复的
+            message = f"所有 {duplicate_count} 个文件均为重复文件，已跳过上传"
+        elif uploaded_count == 0 and skipped_count > 0:
+            # 所有文件都不是PDF
+            message = f"所有 {skipped_count} 个文件都不是PDF格式，已跳过"
+        elif uploaded_count == 0 and duplicate_count == 0 and skipped_count == 0:
+            # 理论上不会发生，但以防万一
+            message = "没有文件被上传"
+        elif uploaded_count > 0 and duplicate_count > 0:
+            # 部分上传，部分重复
+            message = f"成功上传 {uploaded_count} 个文件，{duplicate_count} 个文件重复被跳过"
+            if skipped_count > 0:
+                message += f"，{skipped_count} 个非PDF文件被忽略"
+        elif uploaded_count > 0:
+            # 全部成功上传
+            message = f"成功上传 {uploaded_count} 个文件"
+            if skipped_count > 0:
+                message += f"，{skipped_count} 个非PDF文件被忽略"
+        else:
+            message = "没有文件被上传"
+        
+        return {
+            "success": uploaded_count > 0 or duplicate_count > 0,  # 如果有文件处理就算成功
+            "message": message,
+            "data": uploaded_files,  # 成功上传的文件
+            "summary": {
+                "total": total,
+                "uploaded": uploaded_count,
+                "duplicates": duplicate_count,
+                "skipped": skipped_count
+            },
+            "duplicates": duplicate_files,  # 重复文件列表
+            "skipped": skipped_files  # 跳过的文件列表
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"上传失败：{e}",
+            "data": []
+        }
+
+        
+# ============================================================
+# 获取 PDF 列表
+# GET /api/pdf/list
+# ============================================================
+
+@app.get("/api/pdf/list")
+def list_pdfs():
+    """
+    获取所有 PDF 文件列表
+    """
+    try:
+        pdfs = []
+        for f in PDF_DIR.glob("*.pdf"):
+            pdfs.append({
+                "name": f.name,
+                "size": f.stat().st_size,
+                "modified": f.stat().st_mtime
+            })
+        return {
+            "success": True,
+            "data": pdfs
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"获取列表失败：{e}"
+        }
+
+
+# ============================================================
+# 选择当前使用的 PDF
+# POST /api/pdf/select
+# ============================================================
+
+@app.post("/api/pdf/select")
+def select_pdf(data: dict = Body(...)):
+    """
+    选择当前使用的 PDF
+    """
+    try:
+        filename = data.get("filename")
+        if not filename:
+            return {
+                "success": False,
+                "message": "缺少 filename 参数"
+            }
+        
+        # 保存到配置文件
+        config_file = CONFIG_DIR / "pdf_config.json"
+        config = {}
+        if config_file.exists():
+            with open(config_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+        
+        config["current_pdf"] = filename
+        
+        with open(config_file, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=2)
+        
+        return {
+            "success": True,
+            "message": f"已切换到：{filename}",
+            "data": {"current_pdf": filename}
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"切换失败：{e}"
+        }
+
+
+# ============================================================
+# 获取当前使用的 PDF
+# GET /api/pdf/current
+# ============================================================
+
+@app.get("/api/pdf/current")
+def get_current_pdf():
+    """
+    获取当前使用的 PDF
+    """
+    try:
+        config_file = CONFIG_DIR / "pdf_config.json"
+        current_pdf = None
+        
+        if config_file.exists():
+            with open(config_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                current_pdf = config.get("current_pdf")
+        
+        # ✅ 检查文件是否存在
+        if current_pdf:
+            file_path = PDF_DIR / current_pdf
+            if not file_path.exists():
+                # ✅ 文件不存在，清除配置
+                if config_file.exists():
+                    with open(config_file, "r", encoding="utf-8") as f:
+                        config = json.load(f)
+                    config["current_pdf"] = None
+                    with open(config_file, "w", encoding="utf-8") as f:
+                        json.dump(config, f, ensure_ascii=False, indent=2)
+                current_pdf = None
+        
+        return {
+            "success": True,
+            "data": {"current_pdf": current_pdf}
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"获取失败：{e}"
+        }
+
+# ============================================================
+# 删除 PDF（增强版）
+# DELETE /api/pdf/delete
+# ============================================================
+
+@app.delete("/api/pdf/delete")
+def delete_pdf(filename: str):
+    """
+    删除 PDF 文件
+    """
+    try:
+        # ✅ 安全检查：防止路径遍历攻击
+        import re
+        if not re.match(r'^[\w\u4e00-\u9fa5\-_.]+$', filename):
+            return {
+                "success": False,
+                "message": "文件名包含非法字符"
+            }
+        
+        # ✅ 确保文件名以 .pdf 结尾
+        if not filename.lower().endswith('.pdf'):
+            return {
+                "success": False,
+                "message": "只能删除 PDF 文件"
+            }
+        
+        file_path = PDF_DIR / filename
+        
+        # ✅ 检查文件是否存在
+        if not file_path.exists():
+            return {
+                "success": False,
+                "message": f"文件不存在：{filename}"
+            }
+        
+        # ✅ 检查是否是文件（不是目录）
+        if not file_path.is_file():
+            return {
+                "success": False,
+                "message": f"{filename} 不是文件"
+            }
+        
+        # ✅ 删除文件
+        file_path.unlink()
+        
+        # ✅ 如果删除的是当前使用的 PDF，清除配置
+        config_file = CONFIG_DIR / "pdf_config.json"
+        if config_file.exists():
+            with open(config_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+            if config.get("current_pdf") == filename:
+                config["current_pdf"] = None
+                with open(config_file, "w", encoding="utf-8") as f:
+                    json.dump(config, f, ensure_ascii=False, indent=2)
+        
+        return {
+            "success": True,
+            "message": f"已删除：{filename}"
+        }
+        
+    except PermissionError:
+        return {
+            "success": False,
+            "message": f"没有权限删除文件：{filename}"
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "message": f"删除失败：{e}"
+        }
+
+
+
+# ============================================================
+# 打标签接口（独立）
+#
+# POST /api/tag/articles
+#
+# ============================================================
+
+@app.post("/api/tag/articles")
+def tag_articles_api():
+    """
+    给法条打工种标签（独立接口）
+    """
+    try:
+
+        print()
+        print("=" * 60)
+        print("🏷️ 开始打工种标签...")
+        print("=" * 60)
+
+        import tag_articles
+        tag_articles.main()
+
+        print("✅ 工种标签打标完成")
+        print("=" * 60)
+        print()
+
+        return {
+            "success": True,
+            "message": "打标签完成"
+        }
+
+    except Exception as e:
+
+        print()
+        print("❌ 打标签失败：", e)
+        print()
+
+        return {
+            "success": False,
+            "message": f"打标签失败：{e}"
+        }
+
+# ============================================================
+# 36. 删除新题（通过ID精确删除，同时从历史题库中移除）
+#
+# POST /api/questions/delete-new
+#
+# ============================================================
+
+@app.post("/api/questions/delete-new")
+def delete_new_question(
+    data: dict = Body(...)
+):
+    """
+    从 _new.json 和历史题库中删除指定ID的题目
+    
+    请求体：
+    {
+        "id": "uuid-xxx-xxx"  // 题目的唯一ID
+    }
+    """
+    try:
+
+        print()
+        print("=" * 60)
+        print("删除新题（通过ID精确删除，同时从历史题库移除）")
+        print("=" * 60)
+
+        # ----------------------------------------------------
+        # 参数检查
+        # ----------------------------------------------------
+        if not isinstance(data, dict):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "参数必须是对象"
+                }
+            )
+
+        question_id = data.get("id")
+        
+        if not question_id:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "缺少 id 参数"
+                }
+            )
+
+        print(f"📌 要删除的题目ID：{question_id}")
+
+        # ----------------------------------------------------
+        # 1. 查找 _new.json 文件
+        # ----------------------------------------------------
+        json_files = list(
+            QUESTIONS_DIR.glob("*_new.json")
+        )
+
+        if not json_files:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "message": "没有找到 _new.json 文件"
+                }
+            )
+
+        json_files.sort(
+            key=lambda x: x.stat().st_mtime,
+            reverse=True
+        )
+
+        new_file = json_files[0]
+
+        print(f"📄 _new.json 文件：{new_file.name}")
+
+        # ----------------------------------------------------
+        # 2. 读取 _new.json 数据
+        # ----------------------------------------------------
+        new_questions = read_json_file(new_file)
+
+        if new_questions is None:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": "读取 _new.json 失败"
+                }
+            )
+
+        if not isinstance(new_questions, list):
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": "_new.json 格式不是数组"
+                }
+            )
+
+        print(f"📌 _new.json 当前有 {len(new_questions)} 道题")
+
+        # ----------------------------------------------------
+        # 3. 通过ID查找要删除的题目
+        # ----------------------------------------------------
+        deleted_question = None
+        deleted_index = -1
+        
+        for i, q in enumerate(new_questions):
+            if q.get("id") == question_id:
+                deleted_question = q
+                deleted_index = i
+                break
+
+        if deleted_question is None:
+            print(f"⚠️ 在 _new.json 中未找到ID为 {question_id} 的题目")
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "success": False,
+                    "message": f"未找到ID为 {question_id} 的题目"
+                }
+            )
+
+        print(f"🗑️ 要删除的题目：")
+        print(f"   ID：{question_id}")
+        print(f"   文章：{deleted_question.get('article', '')}")
+        print(f"   题型：{deleted_question.get('title_category_name', '')}")
+        print(f"   题目：{deleted_question.get('title', '')[:30]}...")
+
+        # ----------------------------------------------------
+        # 4. 从 _new.json 中删除
+        # ----------------------------------------------------
+        new_questions.pop(deleted_index)
+
+        try:
+            with open(new_file, "w", encoding="utf-8") as f:
+                json.dump(new_questions, f, ensure_ascii=False, indent=2)
+            print(f"✅ 已从 _new.json 删除，剩余 {len(new_questions)} 道")
+        except Exception as e:
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": f"保存 _new.json 失败：{e}"
+                }
+            )
+
+        # ----------------------------------------------------
+        # 5. 从历史题库中删除（只用ID匹配）
+        # ----------------------------------------------------
+        history_file = find_question_file()
+        
+        if history_file is None:
+            print("⚠️ 没有找到历史题库文件")
+        else:
+            print(f"📄 历史题库文件：{history_file.name}")
+            
+            history_questions = read_json_file(history_file)
+            
+            if history_questions is not None and isinstance(history_questions, list):
+                
+                original_count = len(history_questions)
+                deleted_from_history = False
+                
+                # ✅ 只通过ID匹配
+                for i, q in enumerate(history_questions):
+                    if q.get("id") == question_id:
+                        removed = history_questions.pop(i)
+                        deleted_from_history = True
+                        print(f"✅ 已从历史题库删除（ID匹配）：{removed.get('title', '')[:30]}...")
+                        break
+                
+                if deleted_from_history:
+                    try:
+                        with open(history_file, "w", encoding="utf-8") as f:
+                            json.dump(history_questions, f, ensure_ascii=False, indent=2)
+                        print(f"✅ 历史题库更新完成，删除前 {original_count} 道，删除后 {len(history_questions)} 道")
+                    except Exception as e:
+                        print(f"❌ 保存历史题库失败：{e}")
+                        return JSONResponse(
+                            status_code=500,
+                            content={
+                                "success": False,
+                                "message": f"保存历史题库失败：{e}"
+                            }
+                        )
+                else:
+                    print("ℹ️ 历史题库中没有找到相同ID的题目，跳过")
+            else:
+                print("⚠️ 无法读取历史题库")
+
+        print("=" * 60)
+        print()
+
+        return {
+            "success": True,
+            "message": f"删除成功，_new.json 剩余 {len(new_questions)} 道题",
+            "data": {
+                "remaining": len(new_questions),
+                "deleted": deleted_question
+            }
+        }
+
+    except Exception as e:
+
+        print()
+        print("=" * 60)
+        print("删除新题失败")
+        print("=" * 60)
+        print(e)
+        print()
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"删除失败：{e}"
+            }
+        )
+        
+ # ============================================================
+# 37. 从题库中删除题目（通过ID精确删除，同步删除 _new.json 和历史题库）
+#
+# POST /api/questions/delete-bank
+#
+# ============================================================
+
+@app.post("/api/questions/delete-bank")
+def delete_bank_question(
+    data: dict = Body(...)
+):
+    """
+    通过题目ID精确删除
+    同时从 _new.json 和历史题库中删除
+    
+    请求体：
+    {
+        "id": "uuid",         // ✅ 题目的唯一ID
+        "question": {...}     // 完整的题目对象（备用）
+    }
+    """
+    try:
+
+        print()
+        print("=" * 80)
+        print("🗑️ 通过ID精确删除题目")
+        print("=" * 80)
+
+        # ----------------------------------------------------
+        # 参数检查
+        # ----------------------------------------------------
+        if not isinstance(data, dict):
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "参数必须是对象"
+                }
+            )
+
+        # ✅ 优先使用 id
+        question_id = data.get("id")
+        question = data.get("question")
+
+        # 如果没有 id，从 question 中取
+        if not question_id and question and isinstance(question, dict):
+            question_id = question.get("id")
+
+        if not question_id:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "success": False,
+                    "message": "缺少 id 参数，无法精确删除"
+                }
+            )
+
+        print(f"📌 要删除的题目ID：{question_id}")
+        print("=" * 80)
+
+        total_deleted = 0
+        deleted_from = []
+
+        # ====================================================
+        # 第一步：从 _new.json 中删除
+        # ====================================================
+        new_files = list(QUESTIONS_DIR.glob("*_new.json"))
+        
+        if new_files:
+            new_files.sort(key=lambda x: x.stat().st_mtime, reverse=True)
+            
+            for new_file in new_files:
+                print(f"📄 处理 _new.json：{new_file.name}")
+                
+                try:
+                    with open(new_file, "r", encoding="utf-8") as f:
+                        new_questions = json.load(f)
+                except Exception as e:
+                    print(f"   ❌ 读取失败：{e}")
+                    continue
+                
+                if not isinstance(new_questions, list):
+                    new_questions = []
+                
+                original_count = len(new_questions)
+                print(f"   _new.json 当前有 {original_count} 道题")
+                
+                # ✅ 通过ID查找并删除
+                deleted = False
+                for i, q in enumerate(new_questions):
+                    if q.get("id") == question_id:
+                        removed = new_questions.pop(i)
+                        deleted = True
+                        total_deleted += 1
+                        deleted_from.append("_new.json")
+                        print(f"   ✅ 从 _new.json 删除：{removed.get('title', '')[:30]}...")
+                        break
+                
+                if deleted:
+                    try:
+                        with open(new_file, "w", encoding="utf-8") as f:
+                            json.dump(new_questions, f, ensure_ascii=False, indent=2)
+                        print(f"   ✅ _new.json 保存成功，剩余 {len(new_questions)} 道")
+                    except Exception as e:
+                        print(f"   ❌ 保存失败：{e}")
+                else:
+                    print(f"   ⚠️ 在 _new.json 中未找到ID为 {question_id} 的题目")
+        else:
+            print("ℹ️ 没有找到 _new.json 文件")
+
+        # ====================================================
+        # 第二步：从历史题库中删除
+        # ====================================================
+        history_file = find_question_file()
+        
+        if history_file:
+            print()
+            print(f"📄 处理历史题库：{history_file.name}")
+            
+            try:
+                with open(history_file, "r", encoding="utf-8") as f:
+                    history_questions = json.load(f)
+            except Exception as e:
+                print(f"   ❌ 读取失败：{e}")
+                history_questions = []
+            
+            if not isinstance(history_questions, list):
+                history_questions = []
+            
+            original_count = len(history_questions)
+            print(f"   历史题库当前有 {original_count} 道题")
+            
+            # ✅ 通过ID查找并删除
+            deleted = False
+            for i, q in enumerate(history_questions):
+                if q.get("id") == question_id:
+                    removed = history_questions.pop(i)
+                    deleted = True
+                    total_deleted += 1
+                    deleted_from.append("history")
+                    print(f"   ✅ 从历史题库删除：{removed.get('title', '')[:30]}...")
+                    break
+            
+            if deleted:
+                try:
+                    with open(history_file, "w", encoding="utf-8") as f:
+                        json.dump(history_questions, f, ensure_ascii=False, indent=2)
+                    print(f"   ✅ 历史题库保存成功，剩余 {len(history_questions)} 道")
+                except Exception as e:
+                    print(f"   ❌ 保存失败：{e}")
+                    return JSONResponse(
+                        status_code=500,
+                        content={
+                            "success": False,
+                            "message": f"保存历史题库失败：{e}"
+                        }
+                    )
+            else:
+                print(f"   ⚠️ 在历史题库中未找到ID为 {question_id} 的题目")
+        else:
+            print("ℹ️ 没有找到历史题库文件")
+
+        # ====================================================
+        # 返回结果
+        # ====================================================
+        print()
+        print("=" * 80)
+        if total_deleted > 0:
+            print(f"✅ 删除成功，共删除 {total_deleted} 道题")
+            print(f"   删除来源：{', '.join(set(deleted_from))}")
+        else:
+            print(f"⚠️ 未找到ID为 {question_id} 的题目")
+        print("=" * 80)
+        print()
+
+        return {
+            "success": True,
+            "message": f"删除完成，共删除 {total_deleted} 道题",
+            "data": {
+                "deleted_count": total_deleted,
+                "deleted_from": list(set(deleted_from))
+            }
+        }
+
+    except Exception as e:
+
+        print()
+        print("=" * 80)
+        print("❌ 删除题目失败")
+        print("=" * 80)
+        print(f"异常类型：{type(e).__name__}")
+        print(f"异常信息：{e}")
+        import traceback
+        traceback.print_exc()
+        print("=" * 80)
+
+        return JSONResponse(
+            status_code=500,
+            content={
+                "success": False,
+                "message": f"删除失败：{str(e)}"
+            }
+        )
+
+        
+
 # ============================================================
 # 34. 全局异常处理
 # ============================================================
@@ -1902,101 +4317,9 @@ async def not_found_handler(
     )
 
 
-# ============================================================
-# 35. 启动
-# ============================================================
-
 if __name__ == "__main__":
-
-    print()
-    print("=" * 60)
-    print(
-        "        通用法规 AI 系统"
-    )
-    print("=" * 60)
-    print()
-
-    print(
-        "AI服务正在启动……"
-    )
-
-    print()
-
-    print(
-        "访问地址："
-    )
-
-    print(
-        "http://127.0.0.1:8000"
-    )
-
-    print()
-
-    print(
-        "工作台："
-    )
-
-    print(
-        "http://127.0.0.1:8000/dashboard"
-    )
-
-    print()
-
-    print(
-        "法规知识库："
-    )
-
-    print(
-        "http://127.0.0.1:8000/knowledge"
-    )
-
-    print()
-
-    print(
-        "AI智能出题："
-    )
-
-    print(
-        "http://127.0.0.1:8000/ai-question"
-    )
-
-    print()
-
-    print(
-        "题库管理："
-    )
-
-    print(
-        "http://127.0.0.1:8000/question-bank"
-    )
-
-    print()
-
-    print(
-        "系统设置："
-    )
-
-    print(
-        "http://127.0.0.1:8000/system"
-    )
-
-    print()
-
-    print(
-        "API文档："
-    )
-
-    print(
-        "http://127.0.0.1:8000/docs"
-    )
-
-    print()
-
-    print("=" * 60)
-    print()
-
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000
+        port=8765
     )

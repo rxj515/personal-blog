@@ -1,101 +1,104 @@
-/* =========================================================
- *
- * question_bank.js
- *
- * 题库管理
- *
- * ========================================================= */
-
+/*
+ * =========================================================
+ * question_bank.js - 题库管理
+ * =========================================================
+ */
 
 const QuestionBank = {
 
-    /* =====================================================
-     * 当前全部题目
-     * ===================================================== */
+    // =====================================================
+    // 状态
+    // =====================================================
 
     questions: [],
-
-
-    /* =====================================================
-     * 当前筛选后的题目
-     * ===================================================== */
-
     filteredQuestions: [],
-
-
-    /* =====================================================
-     * 当前页
-     * ===================================================== */
-
     currentPage: 1,
-
-
-    /* =====================================================
-     * 每页数量
-     * ===================================================== */
-
     pageSize: 10,
+    
+    // 当前选择分类
+    currentDeptId: "",
 
-
-    /* =====================================================
-     * 初始化
-     * ===================================================== */
+    // =====================================================
+    // 初始化
+    // =====================================================
 
     async init() {
 
-        console.log(
-            "===================================="
-        );
-
-        console.log(
-            "QuestionBank 初始化"
-        );
-
-        console.log(
-            "===================================="
-        );
-
+        console.log("📚 QuestionBank 初始化");
 
         this.bindEvents();
 
         await this.loadQuestions();
 
+        this.bindCheckboxEvents();
+
+        this.bindDeleteEvents();
     },
 
 
-    /* =====================================================
-     * 绑定事件
-     * ===================================================== */
+    // =====================================================
+    // 绑定事件
+    // =====================================================
 
     bindEvents() {
 
-        /* =================================================
-         * 搜索
-         * ================================================= */
+        // 加载分类（不阻塞主流程）
+        this.loadDeptList().catch(err => {
 
+            console.warn(
+                '加载分类失败:',
+                err
+            );
+
+        });
+
+
+        // 搜索（防抖）
         const search =
             document.getElementById(
-                "question-search"
+                'question-search'
             );
 
         if (search) {
 
+            let timer;
+
             search.oninput = () => {
+
+                clearTimeout(timer);
+
+                timer = setTimeout(
+                    () => this.filterQuestions(),
+                    300
+                );
+
+            };
+        }
+
+        // 分类筛选
+        const deptFilter =
+            document.getElementById(
+                'question-dept-filter'
+            );
+
+        if (deptFilter) {
+
+            deptFilter.onchange = () => {
+
+                this.currentDeptId =
+                    deptFilter.value;
 
                 this.filterQuestions();
 
             };
-
         }
 
 
-        /* =================================================
-         * 题型筛选
-         * ================================================= */
-
+        
+        // 题型筛选
         const typeFilter =
             document.getElementById(
-                "question-type-filter"
+                'question-type-filter'
             );
 
         if (typeFilter) {
@@ -105,17 +108,13 @@ const QuestionBank = {
                 this.filterQuestions();
 
             };
-
         }
 
 
-        /* =================================================
-         * 上一页
-         * ================================================= */
-
+        // 上一页
         const prev =
             document.getElementById(
-                "question-prev"
+                'question-prev'
             );
 
         if (prev) {
@@ -128,20 +127,18 @@ const QuestionBank = {
 
                     this.renderQuestions();
 
+                    this.bindCheckboxEvents();
+
+                    this.bindDeleteEvents();
                 }
-
             };
-
         }
 
 
-        /* =================================================
-         * 下一页
-         * ================================================= */
-
+        // 下一页
         const next =
             document.getElementById(
-                "question-next"
+                'question-next'
             );
 
         if (next) {
@@ -157,7 +154,6 @@ const QuestionBank = {
                         )
                     );
 
-
                 if (
                     this.currentPage <
                     totalPage
@@ -167,20 +163,18 @@ const QuestionBank = {
 
                     this.renderQuestions();
 
+                    this.bindCheckboxEvents();
+
+                    this.bindDeleteEvents();
                 }
-
             };
-
         }
 
 
-        /* =================================================
-         * Excel 导出
-         * ================================================= */
-
+        // 导出
         const exportBtn =
             document.getElementById(
-                "export-btn"
+                'export-btn'
             );
 
         if (exportBtn) {
@@ -190,179 +184,253 @@ const QuestionBank = {
                 this.exportQuestions();
 
             };
-
         }
 
 
-        /* =================================================
-         * 导入数据库 (新增)
-         * ================================================= */
-
-        const importBtn =
+        // 导入选中
+        const importSelectedBtn =
             document.getElementById(
-                "import-btn"
+                'import-selected-btn'
             );
 
-        if (importBtn) {
+        if (importSelectedBtn) {
 
-            importBtn.onclick = () => {
+            importSelectedBtn.onclick = () => {
 
-                this.importQuestions();
+                this.importSelectedQuestions();
 
             };
-
         }
 
+
+        // 导入全部
+        const importAllBtn =
+            document.getElementById(
+                'import-all-btn'
+            );
+
+        if (importAllBtn) {
+
+            importAllBtn.onclick = () => {
+
+                this.importAllQuestions();
+
+            };
+        }
+
+
+        // 删除选中
+        const deleteSelectedBtn =
+            document.getElementById(
+                'delete-selected-btn'
+            );
+
+        if (deleteSelectedBtn) {
+
+            deleteSelectedBtn.onclick = () => {
+
+                this.deleteSelectedQuestions();
+
+            };
+        }
     },
 
 
-    /* =====================================================
-     * 加载题库
-     * ===================================================== */
+    // =====================================================
+    // 绑定删除事件（事件委托）
+    // =====================================================
+
+    bindDeleteEvents() {
+
+        const list =
+            document.getElementById(
+                'question-list'
+            );
+
+        if (!list) return;
+
+
+        if (this._deleteHandler) {
+
+            list.removeEventListener(
+                'click',
+                this._deleteHandler
+            );
+        }
+
+
+        this._deleteHandler = e => {
+
+            const deleteBtn =
+                e.target.closest(
+                    '.btn-delete-row'
+                );
+
+            if (!deleteBtn) return;
+
+
+            const row =
+                deleteBtn.closest('tr');
+
+            if (!row) return;
+
+
+            const index =
+                parseInt(
+                    row.dataset.index
+                );
+
+
+            if (!isNaN(index)) {
+
+                this.deleteSingleQuestion(
+                    index
+                );
+            }
+        };
+
+
+        list.addEventListener(
+            'click',
+            this._deleteHandler
+        );
+    },
+
+
+    // =====================================================
+    // 加载题库
+    // 同时加载历史题库和 _new.json
+    // =====================================================
 
     async loadQuestions() {
 
         const list =
             document.getElementById(
-                "question-list"
+                'question-list'
             );
 
-
-        if (!list) {
-
-            console.error(
-                "没有找到 #question-list"
-            );
-
-            return;
-
-        }
+        if (!list) return;
 
 
         list.innerHTML = `
-
             <tr>
-
-                <td
-                    colspan="11"
-                    class="empty-cell"
-                >
-
-                    正在读取题库...
-
+                <td colspan="13"
+                    class="empty-cell">
+                    ⏳ 正在读取题库...
                 </td>
-
             </tr>
-
         `;
 
 
         try {
 
-            console.log(
-                "开始读取题库..."
-            );
-
-
-            const result =
+            // 1. 加载历史题库
+            const historyResult =
                 await window.AppAPI.get(
-                    "/api/questions/data"
+                    '/api/questions/data'
                 );
 
 
-            console.log(
-                "题库接口返回：",
-                result
-            );
-
-
-            if (
-                !result ||
-                !result.success
-            ) {
-
-                throw new Error(
-                    result?.message ||
-                    "读取题库失败"
-                );
-
-            }
-
-
-            /* =================================================
-             * 获取题目数据
-             * ================================================= */
-
-            let data = [];
-
-
-            if (
-                Array.isArray(
-                    result.data
+            const historyQuestions =
+                (
+                    historyResult?.success &&
+                    Array.isArray(
+                        historyResult.data
+                    )
                 )
-            ) {
-
-                data =
-                    result.data;
-
-            }
-
-            else if (
-                result.result &&
-                Array.isArray(
-                    result.result.data
-                )
-            ) {
-
-                data =
-                    result.result.data;
-
-            }
-
-            else if (
-                result.questions &&
-                Array.isArray(
-                    result.questions
-                )
-            ) {
-
-                data =
-                    result.questions;
-
-            }
-
-
-            this.questions =
-                Array.isArray(data)
-                    ? data
+                    ? historyResult.data
                     : [];
 
 
+            // 2. 加载新生成的题目
+            const newResult =
+                await window.AppAPI.get(
+                    '/api/questions/new-data'
+                );
+
+
+            const newQuestions =
+                (
+                    newResult?.success &&
+                    Array.isArray(
+                        newResult.data
+                    )
+                )
+                    ? newResult.data
+                    : [];
+
+
+            // 3. 合并并去重
+            const allQuestions =
+                [...historyQuestions];
+
+            const existed =
+                new Set();
+
+
+            historyQuestions.forEach(q => {
+
+                const key =
+                    q.id ||
+                    `${q.article || ''}|${q.title || ''}`;
+
+                existed.add(key);
+
+            });
+
+
+            let addedCount = 0;
+
+
+            newQuestions.forEach(q => {
+
+                const key =
+                    q.id ||
+                    `${q.article || ''}|${q.title || ''}`;
+
+
+                if (!existed.has(key)) {
+
+                    allQuestions.push(q);
+
+                    existed.add(key);
+
+                    addedCount++;
+                }
+            });
+
+
+            this.questions =
+                allQuestions;
+
             this.filteredQuestions =
                 [...this.questions];
-
 
             this.currentPage = 1;
 
 
             console.log(
-                "题库读取成功：",
-                this.questions.length,
-                "道"
+                `✅ 题库读取成功：` +
+                `历史题库 ${historyQuestions.length} 道 + ` +
+                `新题 ${newQuestions.length} 道 ` +
+                `（新增 ${addedCount} 道）= ` +
+                `共 ${this.questions.length} 道`
             );
 
 
             this.updateTotal();
 
-
             this.renderQuestions();
 
+            this.bindCheckboxEvents();
 
-        }
-        catch (error) {
+            this.bindDeleteEvents();
+
+
+        } catch (error) {
 
             console.error(
-                "题库读取失败：",
+                '❌ 题库读取失败:',
                 error
             );
 
@@ -373,18 +441,14 @@ const QuestionBank = {
 
 
             list.innerHTML = `
-
                 <tr>
-
-                    <td
-                        colspan="11"
-                        class="empty-cell"
-                    >
+                    <td colspan="13"
+                        class="empty-cell">
 
                         <div class="empty-state">
 
                             <div class="empty-icon">
-                                ▦
+                                ❌
                             </div>
 
                             <div class="empty-title">
@@ -400,302 +464,238 @@ const QuestionBank = {
                         </div>
 
                     </td>
-
                 </tr>
-
             `;
 
 
             this.updateTotal();
-
         }
-
     },
 
 
-    /* =====================================================
-     * 筛选题目
-     * ===================================================== */
+    // =====================================================
+    // 筛选题目
+    // =====================================================
 
     filterQuestions() {
 
-        const search =
-            document.getElementById(
-                "question-search"
-            );
-
-
-        const typeFilter =
-            document.getElementById(
-                "question-type-filter"
-            );
-
-
         const keyword =
-            search
-                ? search.value
-                    .trim()
-                    .toLowerCase()
-                : "";
-
-
+            document
+                .getElementById('question-search')
+                ?.value
+                .trim()
+                .toLowerCase() || '';
+    
+    
         const type =
-            typeFilter
-                ? typeFilter.value
-                : "";
-
-
+            document
+                .getElementById('question-type-filter')
+                ?.value || '';
+    
+    
         this.filteredQuestions =
-            this.questions.filter(
-                question => {
-
-
-                    /* =====================================
-                     * 搜索
-                     * ===================================== */
-
-                    const text =
-                        JSON.stringify(
-                            question
-                        )
+            this.questions.filter(q => {
+    
+    
+                const text =
+                    JSON.stringify(q)
                         .toLowerCase();
-
-
-                    const keywordMatch =
-                        !keyword ||
-                        text.includes(
-                            keyword
-                        );
-
-
-                    /* =====================================
-                     * 题型
-                     * ===================================== */
-
-                    const questionType =
-                        this.getQuestionType(
-                            question
-                        );
-
-
-                    const typeMatch =
-                        !type ||
-                        questionType === type;
-
-
-                    return (
-                        keywordMatch &&
-                        typeMatch
+    
+    
+                // 搜索
+                const keywordMatch =
+                    !keyword ||
+                    text.includes(keyword);
+    
+    
+    
+                // 题型
+                const typeMatch =
+                    !type ||
+                    this.getQuestionType(q) === type;
+    
+    
+    
+                // 分类
+                const deptMatch =
+                    !this.currentDeptId ||
+                    String(
+                        q.dept_id ||
+                        q.deptId ||
+                        ''
+                    ) === String(
+                        this.currentDeptId
                     );
-
-                }
-            );
-
-
+    
+    
+    
+                return (
+                    keywordMatch &&
+                    typeMatch &&
+                    deptMatch
+                );
+    
+            });
+    
+    
+    
         this.currentPage = 1;
-
-
+    
         this.updateTotal();
-
-
+    
         this.renderQuestions();
-
+    
+        this.bindCheckboxEvents();
+    
+        this.bindDeleteEvents();
     },
 
 
-    /* =====================================================
-     * 获取题型
-     * ===================================================== */
+    // =====================================================
+    // 获取题型
+    // =====================================================
 
-    getQuestionType(question) {
+    getQuestionType(q) {
 
         return (
-            question.question_type ||
-            question.type ||
-            question.title_category_name ||
-            "未知题型"
+            q.question_type ||
+            q.type ||
+            q.title_category_name ||
+            '未知题型'
         );
-
     },
 
 
-    /* =====================================================
-     * 获取题目内容
-     * ===================================================== */
+    // =====================================================
+    // 获取题目
+    // =====================================================
 
-    getQuestionTitle(question) {
+    getQuestionTitle(q) {
 
         return (
-            question.title ||
-            question.subjects ||
-            question.question ||
-            question.content ||
-            ""
+            q.title ||
+            q.subjects ||
+            q.question ||
+            q.content ||
+            ''
         );
-
     },
 
 
-    /* =====================================================
-     * 获取选项
-     *
-     * 兼容：
-     *
-     * plan_a
-     * plan_b
-     * ...
-     *
-     * options
-     * ===================================================== */
+    // =====================================================
+    // 获取选项
+    // =====================================================
 
-    getOption(question, letter) {
+    getOption(q, letter) {
 
         const key =
-            "plan_" +
+            'plan_' +
             letter.toLowerCase();
 
 
-        /* =============================================
-         * AI当前数据格式
-         * ============================================= */
-
         if (
-            question[key] !== undefined &&
-            question[key] !== null
+            q[key] !== undefined &&
+            q[key] !== null
         ) {
 
-            return String(
-                question[key]
-            );
-
+            return String(q[key]);
         }
 
 
-        /* =============================================
-         * 兼容 options 数组
-         * ============================================= */
+        if (Array.isArray(q.options)) {
 
-        if (
-            Array.isArray(
-                question.options
-            )
-        ) {
+            const idx =
+                letter.charCodeAt(0) - 65;
 
-            const index =
-                letter.charCodeAt(0) -
-                65;
-
-
-            return (
-                question.options[index] || ""
-            );
-
+            return q.options[idx] || '';
         }
 
 
-        /* =============================================
-         * 兼容 options 对象
-         * ============================================= */
-
         if (
-            question.options &&
-            typeof question.options === "object"
+            q.options &&
+            typeof q.options === 'object'
         ) {
 
             return (
-                question.options[letter] ||
-                question.options[
+                q.options[letter] ||
+                q.options[
                     letter.toLowerCase()
                 ] ||
-                ""
+                ''
             );
-
         }
 
 
-        return "";
-
+        return '';
     },
 
 
-    /* =====================================================
-     * 获取答案
-     * ===================================================== */
+    // =====================================================
+    // 获取答案
+    // =====================================================
 
-    getAnswer(question) {
+    getAnswer(q) {
 
         return (
-            question.answer ||
-            question.correct_answer ||
-            question.correctAnswer ||
-            ""
+            q.answer ||
+            q.correct_answer ||
+            q.correctAnswer ||
+            ''
         );
-
     },
 
 
-    /* =====================================================
-     * 获取解析
-     * ===================================================== */
+    // =====================================================
+    // 获取解析
+    // =====================================================
 
-    getAnalysis(question) {
+    getAnalysis(q) {
 
         return (
-            question.analysis ||
-            question.explanation ||
-            question.explain ||
-            ""
+            q.analysis ||
+            q.explanation ||
+            q.explain ||
+            ''
         );
-
     },
 
 
-    /* =====================================================
-     * 更新总数
-     * ===================================================== */
+    // =====================================================
+    // 更新总数
+    // =====================================================
 
     updateTotal() {
 
-        const total =
+        const el =
             document.getElementById(
-                "question-total"
+                'question-total'
             );
 
 
-        if (!total) {
+        if (el) {
 
-            return;
-
+            el.textContent =
+                `${this.filteredQuestions.length} 题`;
         }
 
 
-        total.textContent =
-            `${this.filteredQuestions.length} 题`;
-
+        // 同时刷新导出按钮
+        this.updateSelectedCount();
     },
 
 
-    /* =====================================================
-     * 渲染题目
-     * ===================================================== */
+    // =====================================================
+    // 渲染表格
+    // =====================================================
 
     renderQuestions() {
 
         const list =
             document.getElementById(
-                "question-list"
+                'question-list'
             );
 
-
-        if (!list) {
-
-            console.error(
-                "没有找到 #question-list"
-            );
-
-            return;
-
-        }
+        if (!list) return;
 
 
         const total =
@@ -706,8 +706,7 @@ const QuestionBank = {
             Math.max(
                 1,
                 Math.ceil(
-                    total /
-                    this.pageSize
+                    total / this.pageSize
                 )
             );
 
@@ -719,37 +718,24 @@ const QuestionBank = {
 
             this.currentPage =
                 totalPage;
-
         }
 
 
         const start =
-            (
-                this.currentPage -
-                1
-            ) *
-            this.pageSize;
-
-
-        const end =
-            start +
+            (this.currentPage - 1) *
             this.pageSize;
 
 
         const data =
             this.filteredQuestions.slice(
                 start,
-                end
+                start + this.pageSize
             );
 
 
-        /* =================================================
-         * 更新分页
-         * ================================================= */
-
         const pageInfo =
             document.getElementById(
-                "question-page-info"
+                'question-page-info'
             );
 
 
@@ -757,13 +743,12 @@ const QuestionBank = {
 
             pageInfo.textContent =
                 `${this.currentPage} / ${totalPage}`;
-
         }
 
 
         const prev =
             document.getElementById(
-                "question-prev"
+                'question-prev'
             );
 
 
@@ -771,13 +756,12 @@ const QuestionBank = {
 
             prev.disabled =
                 this.currentPage <= 1;
-
         }
 
 
         const next =
             document.getElementById(
-                "question-next"
+                'question-next'
             );
 
 
@@ -785,29 +769,20 @@ const QuestionBank = {
 
             next.disabled =
                 this.currentPage >= totalPage;
-
         }
 
-
-        /* =================================================
-         * 没有数据
-         * ================================================= */
 
         if (!data.length) {
 
             list.innerHTML = `
-
                 <tr>
-
-                    <td
-                        colspan="11"
-                        class="empty-cell"
-                    >
+                    <td colspan="13"
+                        class="empty-cell">
 
                         <div class="empty-state">
 
                             <div class="empty-icon">
-                                ▦
+                                📭
                             </div>
 
                             <div class="empty-title">
@@ -821,636 +796,1583 @@ const QuestionBank = {
                         </div>
 
                     </td>
-
                 </tr>
-
             `;
 
             return;
-
         }
 
-
-        /* =================================================
-         * 渲染表格
-         * ================================================= */
 
         list.innerHTML =
             data
                 .map(
-                    (question, index) =>
-                        this.createQuestionRow(
-                            question,
-                            start + index
+                    (q, i) =>
+                        this.createRow(
+                            q,
+                            start + i
                         )
                 )
-                .join("");
-
+                .join('');
     },
 
 
-    /* =====================================================
-     * 创建题目行
-     * ===================================================== */
+    // =====================================================
+    // 创建行
+    // =====================================================
 
-    createQuestionRow(
-        question,
-        index
-    ) {
+    createRow(q, index) {
+
+        const fields = {
+
+            title:
+                this.getQuestionTitle(q),
+
+            type:
+                this.getQuestionType(q),
+
+            answer:
+                this.getAnswer(q),
+
+            analysis:
+                this.getAnalysis(q),
+
+            options:
+                [
+                    'A',
+                    'B',
+                    'C',
+                    'D',
+                    'E',
+                    'F'
+                ].map(
+                    letter =>
+                        this.getOption(
+                            q,
+                            letter
+                        )
+                )
+        };
+
+
+        const esc =
+            this.escapeHtml;
+
+
+        const questionId =
+            q.id || '';
+
+
+        return `
+            <tr
+                data-index="${index}"
+                data-id="${esc(questionId)}"
+            >
+
+                <td class="col-checkbox">
+
+                    <input
+                        type="checkbox"
+                        class="row-checkbox"
+                        data-index="${index}"
+                        data-id="${esc(questionId)}"
+                    >
+
+                </td>
+
+
+                <td class="question-index-cell">
+                    ${index + 1}
+                </td>
+
+
+                <td>
+                    <span class="question-type-tag">
+                        ${esc(fields.type)}
+                    </span>
+                </td>
+
+
+                <td
+                    class="question-title-cell"
+                    title="${esc(fields.title)}"
+                >
+                    ${esc(fields.title)}
+                </td>
+
+
+                ${
+                    fields.options
+                        .map(
+                            opt => `
+                                <td
+                                    class="question-option-cell"
+                                >
+                                    ${esc(opt)}
+                                </td>
+                            `
+                        )
+                        .join('')
+                }
+
+
+                <td
+                    class="question-answer-cell"
+                >
+                    ${
+                        fields.answer
+                            ? `
+                                <span
+                                    class="answer-tag"
+                                >
+                                    ${esc(
+                                        fields.answer
+                                    )}
+                                </span>
+                            `
+                            : '-'
+                    }
+                </td>
+
+
+                <td
+                    class="question-analysis-cell"
+                    title="${esc(
+                        fields.analysis
+                    )}"
+                >
+                    ${
+                        fields.analysis
+                            ? esc(
+                                fields.analysis
+                            )
+                            : '-'
+                    }
+                </td>
+
+
+                <td class="col-delete">
+
+                    <button
+                        class="btn-delete-row"
+                        data-index="${index}"
+                        data-id="${esc(questionId)}"
+                        title="删除此题"
+                    >
+                        删除
+                    </button>
+
+                </td>
+
+            </tr>
+        `;
+    },
+
+
+    // =====================================================
+    // 删除单道题
+    // =====================================================
+
+    async deleteSingleQuestion(index) {
+
+        if (
+            !this.questions ||
+            this.questions.length === 0
+        ) {
+
+            return;
+        }
+
+
+        if (
+            index < 0 ||
+            index >= this.filteredQuestions.length
+        ) {
+
+            console.warn(
+                '删除失败：索引超出范围',
+                index
+            );
+
+            return;
+        }
+
+
+        const question =
+            this.filteredQuestions[index];
+
 
         const title =
             this.getQuestionTitle(
                 question
-            );
+            ) || '未命名题目';
 
 
         const type =
             this.getQuestionType(
                 question
-            );
+            ) || '未知题型';
 
 
-        const answer =
-            this.getAnswer(
-                question
-            );
+        const questionId =
+            question.id;
 
 
-        const analysis =
-            this.getAnalysis(
-                question
-            );
-
-
-        const optionA =
-            this.getOption(
-                question,
-                "A"
-            );
-
-
-        const optionB =
-            this.getOption(
-                question,
-                "B"
-            );
-
-
-        const optionC =
-            this.getOption(
-                question,
-                "C"
-            );
-
-
-        const optionD =
-            this.getOption(
-                question,
-                "D"
-            );
-
-
-        const optionE =
-            this.getOption(
-                question,
-                "E"
-            );
-
-
-        const optionF =
-            this.getOption(
-                question,
-                "F"
-            );
-
-
-        return `
-
-            <tr>
-
-                <!-- 序号 -->
-
-                <td
-                    class="question-index-cell"
-                >
-
-                    ${index + 1}
-
-                </td>
-
-
-                <!-- 题型 -->
-
-                <td>
-
-                    <span
-                        class="question-type-tag"
-                    >
-
-                        ${this.escapeHtml(
-                            type
-                        )}
-
-                    </span>
-
-                </td>
-
-
-                <!-- 题目 -->
-
-                <td
-                    class="question-title-cell"
-                    title="${this.escapeHtml(
-                        title
-                    )}"
-                >
-
-                    ${this.escapeHtml(
-                        title
-                    )}
-
-                </td>
-
-
-                <!-- A -->
-
-                <td
-                    class="question-option-cell"
-                >
-
-                    ${this.escapeHtml(
-                        optionA
-                    )}
-
-                </td>
-
-
-                <!-- B -->
-
-                <td
-                    class="question-option-cell"
-                >
-
-                    ${this.escapeHtml(
-                        optionB
-                    )}
-
-                </td>
-
-
-                <!-- C -->
-
-                <td
-                    class="question-option-cell"
-                >
-
-                    ${this.escapeHtml(
-                        optionC
-                    )}
-
-                </td>
-
-
-                <!-- D -->
-
-                <td
-                    class="question-option-cell"
-                >
-
-                    ${this.escapeHtml(
-                        optionD
-                    )}
-
-                </td>
-
-
-                <!-- E -->
-
-                <td
-                    class="question-option-cell"
-                >
-
-                    ${this.escapeHtml(
-                        optionE
-                    )}
-
-                </td>
-
-
-                <!-- F -->
-
-                <td
-                    class="question-option-cell"
-                >
-
-                    ${this.escapeHtml(
-                        optionF
-                    )}
-
-                </td>
-
-
-                <!-- 答案 -->
-
-                <td
-                    class="question-answer-cell"
-                >
-
-                    ${
-                        answer
-                            ? `
-                                <span
-                                    class="answer-tag"
-                                >
-                                    ${this.escapeHtml(
-                                        answer
-                                    )}
-                                </span>
-                              `
-                            : "-"
-                    }
-
-                </td>
-
-
-                <!-- 解析 -->
-
-                <td
-                    class="question-analysis-cell"
-                    title="${this.escapeHtml(
-                        analysis
-                    )}"
-                >
-
-                    ${
-                        analysis
-                            ? this.escapeHtml(
-                                analysis
-                            )
-                            : "-"
-                    }
-
-                </td>
-
-            </tr>
-
-        `;
-
-    },
-
-
-    /* =====================================================
-     * 导入到数据库 (新增方法)
-     * ===================================================== */
-
-    // async importQuestions() {
-
-    //     /* =================================================
-    //      * 检查是否有数据
-    //      * ================================================= */
-
-    //     if (
-    //         !Array.isArray(
-    //             this.filteredQuestions
-    //         ) ||
-    //         this.filteredQuestions.length === 0
-    //     ) {
-
-    //         alert(
-    //             "当前没有可导入的题目"
-    //         );
-
-    //         return;
-
-    //     }
-
-
-    //     /* =================================================
-    //      * 确认导入
-    //      * ================================================= */
-
-    //     const confirmMessage =
-    //         `确认导入 ${this.filteredQuestions.length} 道题到数据库吗？\n\n` +
-    //         `⚠️ 提示：重复的题目（相同标题和答案）将被跳过。`;
-
-
-    //     if (
-    //         !confirm(
-    //             confirmMessage
-    //         )
-    //     ) {
-
-    //         return;
-
-    //     }
-
-
-    //     /* =================================================
-    //      * 按钮状态
-    //      * ================================================= */
-
-    //     const button =
-    //         document.getElementById(
-    //             "import-btn"
-    //         );
-
-
-    //     const oldText =
-    //         button
-    //             ? button.textContent
-    //             : "";
-
-
-    //     if (button) {
-
-    //         button.disabled = true;
-
-    //         button.textContent =
-    //             "⏳ 导入中...";
-
-    //     }
-
-
-    //     try {
-
-    //         console.log(
-    //             "开始导入题库：",
-    //             this.filteredQuestions.length,
-    //             "道"
-    //         );
-
-
-    //         /* =================================================
-    //          * 发送请求
-    //          * ================================================= */
-
-    //         const response =
-    //             await fetch(
-    //                 "/api/questions/import",
-    //                 {
-    //                     method: "POST",
-
-    //                     headers: {
-    //                         "Content-Type":
-    //                             "application/json"
-    //                     },
-
-    //                     body:
-    //                         JSON.stringify({
-    //                             questions:
-    //                                 this.filteredQuestions
-    //                         })
-    //                 }
-    //             );
-
-
-    //         /* =================================================
-    //          * 检查响应
-    //          * ================================================= */
-
-    //         if (!response.ok) {
-
-    //             let message =
-    //                 "导入数据库失败";
-
-
-    //             try {
-
-    //                 const error =
-    //                     await response.json();
-
-
-    //                 message =
-    //                     error.message ||
-    //                     message;
-
-    //             }
-    //             catch (_) {}
-
-
-    //             throw new Error(
-    //                 message
-    //             );
-
-    //         }
-
-
-    //         const result =
-    //             await response.json();
-
-
-    //         if (!result.success) {
-
-    //             throw new Error(
-    //                 result.message ||
-    //                 "导入失败"
-    //             );
-
-    //         }
-
-
-    //         /* =================================================
-    //          * 显示结果
-    //          * ================================================= */
-
-    //         const inserted =
-    //             result.data?.inserted ||
-    //             result.inserted ||
-    //             this.filteredQuestions.length;
-
-
-    //         const skipped =
-    //             result.data?.skipped ||
-    //             0;
-
-
-    //         let message =
-    //             `✅ 导入成功！\n` +
-    //             `共处理 ${this.filteredQuestions.length} 道题\n` +
-    //             `成功导入 ${inserted} 道\n`;
-
-
-    //         if (skipped > 0) {
-    //             message += `跳过 ${skipped} 道（已存在）`;
-    //         }
-
-
-    //         alert(message);
-
-
-    //         /* =================================================
-    //          * 可选：刷新题库列表
-    //          * ================================================= */
-
-    //         // 如果想在导入后刷新列表，取消注释下面的代码
-    //         // await this.loadQuestions();
-
-    //     }
-    //     catch (error) {
-
-    //         console.error(
-    //             "导入数据库失败：",
-    //             error
-    //         );
-
-
-    //         alert(
-    //             "❌ 导入失败：\n" +
-    //             error.message
-    //         );
-
-    //     }
-    //     finally {
-
-    //         /* =================================================
-    //          * 恢复按钮
-    //          * ================================================= */
-
-    //         if (button) {
-
-    //             button.disabled = false;
-
-    //             button.textContent =
-    //                 oldText ||
-    //                 "⬆ 导入数据库";
-
-    //         }
-
-    //     }
-
-    // },
-
-
-    /* =====================================================
-     * 导出 Excel
-     * ===================================================== */
-
-    async exportQuestions() {
-
-        if (
-            !Array.isArray(
-                this.filteredQuestions
-            ) ||
-            this.filteredQuestions.length === 0
-        ) {
+        if (!questionId) {
 
             alert(
-                "当前没有可导出的题目"
+                '❌ 该题目没有唯一ID，无法精确删除。请重新生成题目。'
             );
 
             return;
-
         }
 
 
-        const button =
-            document.getElementById(
-                "export-btn"
-            );
+        if (
+            !confirm(
+                `确定要删除这道题吗？\n\n` +
+                `题型：${type}\n` +
+                `题目：${title.substring(0, 50)}...`
+            )
+        ) {
 
-
-        const oldText =
-            button
-                ? button.textContent
-                : "";
-
-
-        if (button) {
-
-            button.disabled = true;
-
-            button.textContent =
-                "正在导出...";
-
+            return;
         }
 
 
         try {
 
-            console.log(
-                "开始导出题库：",
-                this.filteredQuestions.length,
-                "道"
-            );
-
-
             const response =
                 await fetch(
-                    "/api/questions/export",
+                    '/api/questions/delete-bank',
                     {
-                        method: "POST",
+                        method: 'POST',
 
                         headers: {
-                            "Content-Type":
-                                "application/json"
+                            'Content-Type':
+                                'application/json'
                         },
 
-                        body:
-                            JSON.stringify({
-                                questions:
-                                    this.filteredQuestions
-                            })
+                        body: JSON.stringify({
+
+                            id: questionId,
+
+                            question: question
+
+                        })
                     }
                 );
 
 
-            if (!response.ok) {
-
-                let message =
-                    "Excel 导出失败";
+            const result =
+                await response.json();
 
 
-                try {
+            if (!result.success) {
 
-                    const error =
-                        await response.json();
+                alert(
+                    '❌ 删除失败：' +
+                    (
+                        result.message ||
+                        '未知错误'
+                    )
+                );
+
+                return;
+            }
 
 
-                    message =
-                        error.message ||
-                        message;
+            // 从完整列表删除
+            this.questions =
+                this.questions.filter(
+                    q =>
+                        q.id !== questionId
+                );
 
+
+            // 从筛选列表删除
+            this.filteredQuestions =
+                this.filteredQuestions.filter(
+                    q =>
+                        q.id !== questionId
+                );
+
+
+            this.renderQuestions();
+
+            this.updateTotal();
+
+            this.bindCheckboxEvents();
+
+            this.bindDeleteEvents();
+
+            this.clearSelection();
+
+
+            this.showMessage(
+                `✅ 删除成功，剩余 ${this.questions.length} 道题`,
+                'success'
+            );
+
+
+        } catch (e) {
+
+            console.error(
+                '删除失败：',
+                e
+            );
+
+            alert(
+                '❌ 删除失败：' +
+                e.message
+            );
+        }
+    },
+
+
+    // =====================================================
+    // 删除选中的多道题
+    // =====================================================
+
+    async deleteSelectedQuestions() {
+
+        const selectedIndices =
+            this.getSelectedIndices();
+
+
+        if (
+            selectedIndices.length === 0
+        ) {
+
+            alert(
+                '请先选择要删除的题目！'
+            );
+
+            return;
+        }
+
+
+        const selectedQuestions =
+            selectedIndices
+                .map(
+                    i =>
+                        this.filteredQuestions[i]
+                )
+                .filter(
+                    q =>
+                        q && q.id
+                );
+
+
+        if (
+            selectedQuestions.length === 0
+        ) {
+
+            alert(
+                '❌ 选中的题目没有唯一ID，无法删除。请重新生成题目。'
+            );
+
+            return;
+        }
+
+
+        const titles =
+            selectedQuestions
+                .map(
+                    (q, idx) => {
+
+                        const title =
+                            this.getQuestionTitle(q) ||
+                            '未命名';
+
+
+                        const type =
+                            this.getQuestionType(q) ||
+                            '未知';
+
+
+                        return (
+                            `${idx + 1}. ` +
+                            `[${type}] ` +
+                            `${title.substring(0, 30)}...`
+                        );
+                    }
+                )
+                .join('\n');
+
+
+        if (
+            !confirm(
+                `⚠️ 确定要删除选中的 ` +
+                `${selectedQuestions.length} 道题吗？\n\n` +
+                `${titles}`
+            )
+        ) {
+
+            return;
+        }
+
+
+        const deleteBtn =
+            document.getElementById(
+                'delete-selected-btn'
+            );
+
+
+        if (deleteBtn) {
+
+            deleteBtn.disabled = true;
+
+            deleteBtn.textContent =
+                '⏳ 删除中...';
+        }
+
+
+        try {
+
+            let deletedCount = 0;
+
+            const failedList = [];
+
+            const deletedIds =
+                new Set();
+
+
+            for (
+                const q of selectedQuestions
+            ) {
+
+                const response =
+                    await fetch(
+                        '/api/questions/delete-bank',
+                        {
+                            method: 'POST',
+
+                            headers: {
+                                'Content-Type':
+                                    'application/json'
+                            },
+
+                            body: JSON.stringify({
+
+                                id: q.id,
+
+                                question: q
+
+                            })
+                        }
+                    );
+
+
+                const result =
+                    await response.json();
+
+
+                if (result.success) {
+
+                    deletedCount++;
+
+                    deletedIds.add(q.id);
+
+                } else {
+
+                    const title =
+                        this.getQuestionTitle(q) ||
+                        '未命名';
+
+
+                    failedList.push(
+                        `题目：${title.substring(0, 20)}...`
+                    );
                 }
-                catch (_) {}
+            }
+
+
+            // 从完整列表删除
+            this.questions =
+                this.questions.filter(
+                    q =>
+                        !deletedIds.has(q.id)
+                );
+
+
+            // 从筛选列表删除
+            this.filteredQuestions =
+                this.filteredQuestions.filter(
+                    q =>
+                        !deletedIds.has(q.id)
+                );
+
+
+            this.renderQuestions();
+
+            this.updateTotal();
+
+            this.bindCheckboxEvents();
+
+            this.bindDeleteEvents();
+
+            this.clearSelection();
+
+
+            if (
+                failedList.length === 0
+            ) {
+
+                this.showMessage(
+                    `✅ 成功删除 ${deletedCount} 道题，剩余 ${this.questions.length} 道`,
+                    'success'
+                );
+
+            } else {
+
+                const msg =
+                    `⚠️ 部分删除成功：` +
+                    `${deletedCount}/${selectedQuestions.length} 道\n\n` +
+                    `失败：\n` +
+                    `${failedList.join('\n')}`;
+
+
+                this.showMessage(
+                    msg,
+                    'warning'
+                );
+            }
+
+
+        } catch (e) {
+
+            console.error(
+                '批量删除失败：',
+                e
+            );
+
+            alert(
+                '❌ 删除失败：' +
+                e.message
+            );
+
+
+        } finally {
+
+            this.updateSelectedCount();
+        }
+    },
+
+
+    // =====================================================
+    // 获取选中的索引
+    // =====================================================
+
+    getSelectedIndices() {
+
+        const checkboxes =
+            document.querySelectorAll(
+                '#question-list .row-checkbox:checked'
+            );
+
+
+        const indices = [];
+
+
+        checkboxes.forEach(cb => {
+
+            const idx =
+                parseInt(
+                    cb.dataset.index
+                );
+
+
+            if (!isNaN(idx)) {
+
+                indices.push(idx);
+            }
+        });
+
+
+        return indices;
+    },
+
+
+    // =====================================================
+    // 清除所有选中
+    // =====================================================
+
+    clearSelection() {
+
+        document
+            .querySelectorAll(
+                '#question-list .row-checkbox'
+            )
+            .forEach(cb => {
+
+                cb.checked = false;
+
+                cb.closest('tr')
+                    ?.classList
+                    .remove('selected');
+            });
+
+
+        const selectAll =
+            document.getElementById(
+                'select-all'
+            );
+
+
+        if (selectAll) {
+
+            selectAll.checked = false;
+
+            selectAll.indeterminate = false;
+        }
+
+
+        this.updateSelectedCount();
+
+        this.updateSelectAllState();
+    },
+
+
+    // =====================================================
+    // 显示消息
+    // =====================================================
+
+    showMessage(
+        msg,
+        type = 'info'
+    ) {
+
+        const oldMsg =
+            document.getElementById(
+                'bank-message'
+            );
+
+
+        if (oldMsg) {
+
+            oldMsg.remove();
+        }
+
+
+        const messageEl =
+            document.createElement(
+                'div'
+            );
+
+
+        messageEl.id =
+            'bank-message';
+
+
+        messageEl.style.cssText = `
+            padding: 12px 20px;
+            border-radius: 12px;
+            margin-bottom: 16px;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+            animation: slideDown 0.3s ease;
+        `;
+
+
+        const colors = {
+
+            success: {
+                bg: '#dcfce7',
+                color: '#166534',
+                border: '#86efac'
+            },
+
+            error: {
+                bg: '#fee2e2',
+                color: '#991b1b',
+                border: '#fca5a5'
+            },
+
+            warning: {
+                bg: '#fef3c7',
+                color: '#92400e',
+                border: '#fcd34d'
+            },
+
+            info: {
+                bg: '#dbeafe',
+                color: '#1e40af',
+                border: '#93c5fd'
+            }
+
+        };
+
+
+        const style =
+            colors[type] ||
+            colors.info;
+
+
+        messageEl.style.background =
+            style.bg;
+
+        messageEl.style.color =
+            style.color;
+
+        messageEl.style.border =
+            `1px solid ${style.border}`;
+
+
+        messageEl.textContent =
+            msg;
+
+
+        const container =
+            document.querySelector(
+                '.question-filter-card'
+            );
+
+
+        if (container) {
+
+            container.parentNode.insertBefore(
+                messageEl,
+                container
+            );
+
+        } else {
+
+            const tableCard =
+                document.querySelector(
+                    '.question-table-card'
+                );
+
+
+            if (tableCard) {
+
+                tableCard.parentNode.insertBefore(
+                    messageEl,
+                    tableCard
+                );
+            }
+        }
+
+
+        clearTimeout(
+            this._messageTimer
+        );
+
+
+        this._messageTimer =
+            setTimeout(
+                () => {
+
+                    messageEl.style.animation =
+                        'slideUp 0.3s ease forwards';
+
+
+                    setTimeout(
+                        () => messageEl.remove(),
+                        300
+                    );
+
+                },
+                5000
+            );
+    },
+
+
+    // =====================================================
+    // 复选框事件
+    // =====================================================
+
+    bindCheckboxEvents() {
+
+        // ==========================================
+        // 全选
+        // ==========================================
+
+        const selectAll =
+            document.getElementById(
+                'select-all'
+            );
+
+
+        if (selectAll) {
+
+            selectAll.onchange = () => {
+
+                const checked =
+                    selectAll.checked;
+
+
+                document
+                    .querySelectorAll(
+                        '#question-list .row-checkbox'
+                    )
+                    .forEach(cb => {
+
+                        cb.checked =
+                            checked;
+
+
+                        const row =
+                            cb.closest('tr');
+
+
+                        if (row) {
+
+                            row.classList.toggle(
+                                'selected',
+                                checked
+                            );
+                        }
+                    });
+
+
+                this.updateSelectedCount();
+
+                this.updateSelectAllState();
+            };
+        }
+
+
+        // ==========================================
+        // 单个复选框
+        // ==========================================
+
+        document
+            .querySelectorAll(
+                '#question-list .row-checkbox'
+            )
+            .forEach(cb => {
+
+                cb.onchange = () => {
+
+                    const row =
+                        cb.closest('tr');
+
+
+                    if (row) {
+
+                        row.classList.toggle(
+                            'selected',
+                            cb.checked
+                        );
+                    }
+
+
+                    this.updateSelectedCount();
+
+                    this.updateSelectAllState();
+                };
+            });
+
+
+        this.updateSelectedCount();
+
+        this.updateSelectAllState();
+    },
+
+
+    // =====================================================
+    // 更新选中数量
+    //
+    // 导出 / 导入 / 删除联动
+    // =====================================================
+
+    updateSelectedCount() {
+
+        const count =
+            document.querySelectorAll(
+                '#question-list .row-checkbox:checked'
+            ).length;
+
+
+        const selectedCount =
+            document.getElementById(
+                'selected-count'
+            );
+
+
+        const importCount =
+            document.getElementById(
+                'import-count'
+            );
+
+
+        const deleteCount =
+            document.getElementById(
+                'delete-count'
+            );
+
+
+        const importBtn =
+            document.getElementById(
+                'import-selected-btn'
+            );
+
+
+        const deleteBtn =
+            document.getElementById(
+                'delete-selected-btn'
+            );
+
+
+        const exportBtn =
+            document.getElementById(
+                'export-btn'
+            );
+
+
+        // ==========================================
+        // 数量
+        // ==========================================
+
+        if (selectedCount) {
+
+            selectedCount.textContent =
+                count;
+        }
+
+
+        if (importCount) {
+
+            importCount.textContent =
+                count;
+        }
+
+
+        if (deleteCount) {
+
+            deleteCount.textContent =
+                count;
+        }
+
+
+        // ==========================================
+        // 导入
+        // ==========================================
+
+        if (importBtn) {
+
+            importBtn.disabled =
+                count === 0;
+
+
+            importBtn.innerHTML =
+                `⬆ 导入选中 (${count})`;
+        }
+
+
+        // ==========================================
+        // 删除
+        // ==========================================
+
+        if (deleteBtn) {
+
+            deleteBtn.disabled =
+                count === 0;
+
+
+            deleteBtn.innerHTML =
+                `🗑 删除选中 (${count})`;
+        }
+
+
+        // ==========================================
+        // 导出
+        //
+        // 有选择：
+        // ↓ 导出选中 (3)
+        //
+        // 没选择：
+        // ↓ 导出全部 (100)
+        // ==========================================
+
+        if (exportBtn) {
+
+            if (count > 0) {
+
+                exportBtn.disabled =
+                    false;
+
+
+                exportBtn.innerHTML =
+                    `↓ 导出选中 (${count})`;
+
+            } else {
+
+                exportBtn.disabled =
+                    this.filteredQuestions.length === 0;
+
+
+                exportBtn.innerHTML =
+                    `↓ 导出全部 (${this.filteredQuestions.length})`;
+            }
+        }
+    },
+
+
+    // =====================================================
+    // 更新全选状态
+    // =====================================================
+
+    updateSelectAllState() {
+
+        const selectAll =
+            document.getElementById(
+                'select-all'
+            );
+
+
+        if (!selectAll) return;
+
+
+        const checkboxes =
+            document.querySelectorAll(
+                '#question-list .row-checkbox'
+            );
+
+
+        if (!checkboxes.length) {
+
+            selectAll.checked = false;
+
+            selectAll.indeterminate = false;
+
+            return;
+        }
+
+
+        const checked =
+            document.querySelectorAll(
+                '#question-list .row-checkbox:checked'
+            );
+
+
+        selectAll.checked =
+            checked.length ===
+            checkboxes.length;
+
+
+        selectAll.indeterminate =
+            checked.length > 0 &&
+            checked.length <
+            checkboxes.length;
+    },
+
+
+    // =====================================================
+    // 获取选中的题目
+    // =====================================================
+
+    getSelectedQuestions() {
+
+        const ids =
+            new Set();
+
+
+        document
+            .querySelectorAll(
+                '#question-list .row-checkbox:checked'
+            )
+            .forEach(cb => {
+
+                const id =
+                    cb.dataset.id;
+
+
+                if (id) {
+
+                    ids.add(id);
+                }
+            });
+
+
+        return this.filteredQuestions.filter(
+            q =>
+                ids.has(q.id)
+        );
+    },
+
+
+    // =====================================================
+    // 导入选中
+    // =====================================================
+
+    async importSelectedQuestions() {
+
+        const questions =
+            this.getSelectedQuestions();
+
+
+        if (!questions.length) {
+
+            alert(
+                '请先选择要导入的题目！'
+            );
+
+            return;
+        }
+
+
+        await this.doImport(
+            questions
+        );
+    },
+
+
+    // =====================================================
+    // 导入全部
+    // =====================================================
+
+    async importAllQuestions() {
+
+        if (
+            !this.filteredQuestions.length
+        ) {
+
+            alert(
+                '当前没有可导入的题目'
+            );
+
+            return;
+        }
+
+
+        await this.doImport(
+            this.filteredQuestions
+        );
+    },
+
+
+    // =====================================================
+    // 执行导入
+    // =====================================================
+
+    async doImport(questions) {
+
+        const select =
+            document.getElementById(
+                'import-target-select'
+            );
+
+
+        const option =
+            select?.options[
+                select.selectedIndex
+            ];
+
+
+        if (!option?.value) {
+
+            alert(
+                '请先选择目标分类！'
+            );
+
+            select?.focus();
+
+            return;
+        }
+
+
+        const deptInfo = {
+
+            id:
+                option.value,
+
+            fullName:
+                option.dataset.fullName ||
+                option.textContent.trim(),
+
+            superiorId:
+                option.dataset.superiorId ||
+                '',
+
+            superiorName:
+                option.dataset.superiorName ||
+                ''
+        };
+
+
+        if (
+            !confirm(
+                `确认将 ${questions.length} 道题导入到` +
+                `【${deptInfo.fullName}】吗？`
+            )
+        ) {
+
+            return;
+        }
+
+
+        const btn =
+            document.getElementById(
+                'import-selected-btn'
+            );
+
+
+        const allBtn =
+            document.getElementById(
+                'import-all-btn'
+            );
+
+
+        try {
+
+            if (btn) {
+
+                btn.disabled = true;
+
+                btn.textContent =
+                    '⏳ 导入中...';
+            }
+
+
+            if (allBtn) {
+
+                allBtn.disabled = true;
+            }
+
+
+            const res =
+                await fetch(
+                    '/api/questions/import',
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+
+                        body: JSON.stringify({
+
+                            questions,
+
+                            dept: deptInfo
+
+                        })
+                    }
+                );
+
+
+            const result =
+                await res.json();
+
+
+            if (result.success) {
+
+                const inserted =
+                    result.data?.inserted ??
+                    questions.length;
+
+
+                alert(
+                    `✅ 导入成功！\n` +
+                    `共处理 ${questions.length} 道\n` +
+                    `成功导入 ${inserted} 道`
+                );
+
+
+                this.clearSelection();
+
+            } else {
+
+                alert(
+                    `❌ 导入失败：` +
+                    `${result.message}`
+                );
+            }
+
+
+        } catch (err) {
+
+            alert(
+                `❌ 导入失败：${err.message}`
+            );
+
+
+        } finally {
+
+            if (btn) {
+
+                btn.disabled = true;
+
+                btn.innerHTML =
+                    '⬆ 导入选中 (0)';
+            }
+
+
+            if (allBtn) {
+
+                allBtn.disabled = false;
+            }
+
+
+            this.updateSelectedCount();
+        }
+    },
+
+
+    // =====================================================
+    // 加载分类
+    // =====================================================
+
+    async loadDeptList() {
+
+        try {
+
+            const res =
+                await window.AppAPI.get(
+                    '/api/dept/list'
+                );
+
+
+            // const select =
+            //     document.getElementById(
+            //         'import-target-select'
+            //     );
+
+
+            const importSelect =
+                document.getElementById(
+                    'import-target-select'
+                );
+
+            const filterSelect =
+                document.getElementById(
+                    'question-dept-filter'
+                );
+
+
+    
+
+            // if (!select) return;
+
+
+            // select.innerHTML =
+            //     '<option value="">-- 请选择目标分类 --</option>';
+
+
+
+            if(importSelect){
+
+                importSelect.innerHTML =
+                '<option value="">-- 请选择目标分类 --</option>';
+            
+            }
+            
+            if(filterSelect){
+            
+                filterSelect.innerHTML =
+                '<option value="">全部工种</option>';
+            
+            }
+
+
+
+            if (
+                res?.success &&
+                res.data?.length
+            ) {
+
+                const flatten =
+                    (nodes, prefix = '') => {
+
+                        nodes.forEach(node => {
+
+                            const opt =
+                                document.createElement(
+                                    'option'
+                                );
+
+
+                            opt.value =
+                                node.id;
+
+
+                            opt.textContent =
+                                prefix +
+                                node.name;
+
+
+                            opt.dataset.fullName =
+                                node.name;
+
+
+                            opt.dataset.superiorId =
+                                node.superiorId ||
+                                '';
+
+
+                            opt.dataset.superiorName =
+                                node.superiorName ||
+                                '';
+
+
+                            // select.appendChild(
+                            //     opt
+                            // );
+
+                            if(importSelect){
+
+                                importSelect.appendChild(
+                                    opt.cloneNode(true)
+                                );
+                            
+                            }
+                            
+                            
+                            if(filterSelect){
+                            
+                                filterSelect.appendChild(
+                                    opt.cloneNode(true)
+                                );
+                            
+                            }
+
+
+
+                            if (
+                                node.children?.length
+                            ) {
+
+                                flatten(
+                                    node.children,
+                                    prefix + '　　'
+                                );
+                            }
+                        });
+                    };
+
+
+                flatten(res.data);
+            }
+
+
+        } catch (err) {
+
+            console.error(
+                '加载分类失败:',
+                err
+            );
+        }
+    },
+
+
+    // =====================================================
+    // 导出 Excel
+    //
+    // 有勾选 → 导出选中
+    // 无勾选 → 导出全部
+    // =====================================================
+
+    async exportQuestions() {
+
+        // 获取当前选中的题目
+        const selectedQuestions =
+            this.getSelectedQuestions();
+
+
+        // 有选择导出选择的
+        // 没选择导出当前筛选后的全部
+        const exportQuestions =
+            selectedQuestions.length > 0
+                ? selectedQuestions
+                : this.filteredQuestions;
+
+
+        if (!exportQuestions.length) {
+
+            alert(
+                '当前没有可导出的题目'
+            );
+
+            return;
+        }
+
+
+        const btn =
+            document.getElementById(
+                'export-btn'
+            );
+
+
+        try {
+
+            if (btn) {
+
+                btn.disabled = true;
+
+                btn.textContent =
+                    `⏳ 正在导出 ${exportQuestions.length} 道题...`;
+            }
+
+
+            const res =
+                await fetch(
+                    '/api/questions/export',
+                    {
+                        method: 'POST',
+
+                        headers: {
+                            'Content-Type':
+                                'application/json'
+                        },
+
+                        body: JSON.stringify({
+
+                            questions:
+                                exportQuestions
+
+                        })
+                    }
+                );
+
+
+            if (!res.ok) {
+
+                const err =
+                    await res
+                        .json()
+                        .catch(
+                            () => ({})
+                        );
 
 
                 throw new Error(
-                    message
+                    err.message ||
+                    '导出失败'
                 );
-
             }
 
 
             const blob =
-                await response.blob();
+                await res.blob();
 
 
             if (
                 !blob ||
-                blob.size === 0
+                !blob.size
             ) {
 
                 throw new Error(
-                    "导出的Excel文件为空"
+                    '导出的 Excel 文件为空'
                 );
-
             }
 
 
             const url =
-                window.URL.createObjectURL(
+                URL.createObjectURL(
                     blob
                 );
 
 
             const a =
                 document.createElement(
-                    "a"
+                    'a'
                 );
 
 
-            a.href =
-                url;
+            a.href = url;
 
 
             a.download =
@@ -1459,9 +2381,7 @@ const QuestionBank = {
                 )}.xlsx`;
 
 
-            document.body.appendChild(
-                a
-            );
+            document.body.appendChild(a);
 
 
             a.click();
@@ -1470,128 +2390,106 @@ const QuestionBank = {
             a.remove();
 
 
-            window.URL.revokeObjectURL(
+            URL.revokeObjectURL(
                 url
             );
 
 
-            alert(
-                `Excel 导出成功，共 ${this.filteredQuestions.length} 道题。`
-            );
+            if (
+                selectedQuestions.length > 0
+            ) {
 
-        }
-        catch (error) {
+                alert(
+                    `✅ Excel 导出成功！\n\n` +
+                    `已选择：${selectedQuestions.length} 道题`
+                );
 
-            console.error(
-                "Excel导出失败：",
-                error
-            );
+            } else {
 
-
-            alert(
-                "导出失败：" +
-                error.message
-            );
-
-        }
-        finally {
-
-            if (button) {
-
-                button.disabled = false;
-
-                button.textContent =
-                    oldText ||
-                    "↓ 导出 Excel";
-
+                alert(
+                    `✅ Excel 导出成功！\n\n` +
+                    `共导出：${exportQuestions.length} 道题`
+                );
             }
 
-        }
 
+            // 导出成功后取消选择
+            this.clearSelection();
+
+
+        } catch (err) {
+
+            console.error(
+                '❌ 导出失败:',
+                err
+            );
+
+
+            alert(
+                `❌ 导出失败：${err.message}`
+            );
+
+
+        } finally {
+
+            this.updateSelectedCount();
+        }
     },
 
 
-    /* =====================================================
-     * 日期
-     * ===================================================== */
+    // =====================================================
+    // 工具：日期
+    // =====================================================
 
     formatDate(date) {
 
-        const year =
-            date.getFullYear();
+        return [
 
+            date.getFullYear(),
 
-        const month =
             String(
                 date.getMonth() + 1
-            ).padStart(
-                2,
-                "0"
-            );
+            ).padStart(2, '0'),
 
-
-        const day =
             String(
                 date.getDate()
-            ).padStart(
-                2,
-                "0"
-            );
+            ).padStart(2, '0')
 
-
-        return (
-            year +
-            month +
-            day
-        );
-
+        ].join('');
     },
 
 
-    /* =====================================================
-     * HTML 转义
-     * ===================================================== */
+    // =====================================================
+    // 工具：HTML 转义
+    // =====================================================
 
-    escapeHtml(value) {
+    escapeHtml(str) {
+
+        const map = {
+
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+
+        };
+
 
         return String(
-            value ?? ""
-        )
-        .replace(
-            /&/g,
-            "&amp;"
-        )
-        .replace(
-            /</g,
-            "&lt;"
-        )
-        .replace(
-            />/g,
-            "&gt;"
-        )
-        .replace(
-            /"/g,
-            "&quot;"
-        )
-        .replace(
-            /'/g,
-            "&#039;"
+            str ?? ''
+        ).replace(
+            /[&<>"']/g,
+            m => map[m]
         );
-
     }
 
 };
 
 
-/* =========================================================
- *
- * 给 App.js 使用
- *
- * App.js 会执行：
- *
- * QuestionBank.init()
- *
- * ========================================================= */
+// =====================================================
+// 暴露到 window
+// =====================================================
 
 window.QuestionBank =
     QuestionBank;

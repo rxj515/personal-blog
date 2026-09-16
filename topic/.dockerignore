@@ -1,0 +1,18 @@
+__pycache__
+*.pyc
+*.pyo
+
+.vscode
+.git
+
+README.md
+*.md
+
+.env
+*.env
+
+# 用户账号数据，不进入镜像
+data/users.json
+
+# 运行日志，不进入镜像
+logs/*

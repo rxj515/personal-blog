@@ -336,6 +336,22 @@ def get_ai_config():
     return config
 
 
+def get_public_ai_config():
+    """
+    给前端使用的AI配置。
+    绝不返回真实 API Key。
+    """
+    config = get_ai_config()
+
+    return {
+        "provider": config.get("provider", ""),
+        "model": config.get("model", ""),
+        "base_url": config.get("base_url", ""),
+        "api_key": "******" if config.get("api_key") else ""
+    }
+
+    
+
 # ============================================================
 # 11. 保存AI配置
 # ============================================================
