@@ -28,6 +28,7 @@ import json
 import os
 from pathlib import Path
 import asyncio
+import re
 
 from fastapi import FastAPI, Body, Request, UploadFile, File, Depends 
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, RedirectResponse
@@ -2056,55 +2057,63 @@ async def generate_questions_stream(
         )
 
         try:
-            count = int(
-                data.get(
-                    "count",
-                    10
-                )
-            )
+            count = int(data.get("count", 10))
         except (TypeError, ValueError):
             return JSONResponse(
                 status_code=400,
-                content={
-                    "success": False,
-                    "message": "题目数量必须是整数"
-                }
+                content={"success": False, "message": "题目数量必须是整数"}
             )
 
         if count < 1:
             return JSONResponse(
                 status_code=400,
-                content={
-                    "success": False,
-                    "message": "题目数量必须大于0"
-                }
+                content={"success": False, "message": "题目数量必须大于0"}
             )
 
         if count > 100:
             return JSONResponse(
                 status_code=400,
-                content={
-                    "success": False,
-                    "message": "一次最多生成100道题"
-                }
+                content={"success": False, "message": "一次最多生成100道题"}
             )
 
         # ----------------------------------------------------
         # 3. 接收分类（工种）信息
+        #    ✅ 改动点：fullName 可能是 "鑫隆煤业 / 掘进开拓" 这样的全路径，
+        #    取最后一段作为实际节点名
         # ----------------------------------------------------
 
         dept = data.get("dept", {})
-        dept_id = dept.get("id", "")
-        dept_name = dept.get("fullName", "")
-        superior_name = dept.get("superiorName", "")
+        dept_id = str(dept.get("id", "")).strip()
+        raw_full_name = str(dept.get("fullName", "")).strip()
+        raw_superior = str(dept.get("superiorName", "")).strip()
+
+        def extract_node_name(full_name):
+            """从 '鑫隆煤业 / 掘进开拓' 取出 '掘进开拓'"""
+            if not full_name:
+                return ""
+            parts = re.split(r"\s*/\s*", full_name)
+            parts = [p.strip() for p in parts if p.strip()]
+            return parts[-1] if parts else full_name
+
+        dept_name = extract_node_name(raw_full_name)
+        superior_name = extract_node_name(raw_superior)
+
+        dept_category = (
+            str(dept.get("category", "")).strip()
+            or dept_name
+            or "全部工种"
+        )
+
+        print(f"📥 原始 fullName  = {raw_full_name!r}")
+        print(f"📥 提取 dept_name = {dept_name!r}")
+        print(f"📥 提取 superior  = {superior_name!r}")
 
         # ----------------------------------------------------
-        # 4. ✅ 获取当前选中的 PDF（从请求中读取 source）
+        # 4. 获取当前选中的 PDF（从请求中读取 source）
         # ----------------------------------------------------
 
         source = data.get("source", "")
 
-        # 如果没有传 source，从配置读取当前使用的 PDF
         if not source:
             config_file = CONFIG_DIR / "pdf_config.json"
             if config_file.exists():
@@ -2117,7 +2126,6 @@ async def generate_questions_stream(
         # ----------------------------------------------------
 
         import ai_client
-
         ai_client.set_ai_type(provider)
 
         # ----------------------------------------------------
@@ -2132,28 +2140,23 @@ async def generate_questions_stream(
 
         async def event_generator():
 
-            # 发送开始信号
             yield f"data: {json.dumps({'type': 'start', 'message': '开始生成题目...', 'total': count})}\n\n"
 
-            # 用于收集所有题目
-            all_questions = []
             success_count = 0
             failed_count = 0
 
             # ====================================================
-            # ✅ 8. 根据 source 读取对应的知识库
+            # 8. 根据 source 读取对应的知识库
             # ====================================================
 
             articles = []
             law_name = "法规"
 
             if source:
-                # 去掉 .pdf 后缀
                 source_name = source
                 if source_name.endswith('.pdf'):
                     source_name = source_name[:-4]
 
-                # 读取对应目录的知识库
                 json_file = KNOWLEDGE_DIR / source_name / "articles.json"
                 if json_file.exists():
                     with open(json_file, "r", encoding="utf-8") as f:
@@ -2164,15 +2167,14 @@ async def generate_questions_stream(
                     yield f"data: {json.dumps({'type': 'error', 'message': f'找不到知识库：{source_name}'})}\n\n"
                     return
             else:
-                # 没有指定 source，合并所有知识库
                 for dir_path in KNOWLEDGE_DIR.iterdir():
                     if dir_path.is_dir():
                         json_file = dir_path / "articles.json"
                         if json_file.exists():
                             with open(json_file, "r", encoding="utf-8") as f:
-                                data = json.load(f)
-                                if isinstance(data, list):
-                                    articles.extend(data)
+                                _data = json.load(f)
+                                if isinstance(_data, list):
+                                    articles.extend(_data)
                 print(f"📄 出题使用全部知识库，共 {len(articles)} 条")
 
             if not articles:
@@ -2183,7 +2185,6 @@ async def generate_questions_stream(
                 yield f"data: {json.dumps({'type': 'error', 'message': '法规知识库格式错误'})}\n\n"
                 return
 
-            # 获取法规名称（从第一条数据中提取）
             law_names = {
                 item.get("law_name")
                 for item in articles
@@ -2210,22 +2211,48 @@ async def generate_questions_stream(
                 return
 
             # ----------------------------------------------------
-            # ✅ 根据上级名称（大类）过滤法条
+            # ✅ 严格按节点过滤（不回退）
             # ----------------------------------------------------
 
-            if superior_name:
-                dept_category = get_category_by_superior_name(superior_name)
+            def match_node(item, node_name):
+                """法条 dept_type_name 里是否直接包含该节点"""
+                types = item.get("dept_type_name")
 
-                article_list = [
+                if types is None or types == "":
+                    return False
+
+                if isinstance(types, str):
+                    types = [t.strip() for t in types.split(",") if t.strip()]
+
+                if not isinstance(types, list) or not types:
+                    return False
+
+                return node_name in types
+
+            if dept_name:
+
+                filtered = [
                     item for item in article_list
-                    if item.get("dept_type_name") == dept_category
-                    or item.get("dept_type_name") == "全部工种"
+                    if match_node(item, dept_name)
                 ]
 
-                if not article_list:
-                    print(f"⚠️ 大类 [{dept_category}] 没有匹配到法条，使用全部法条")
+                if not filtered:
+                    print(f"⚠️ 节点 [{dept_name}] 没有可用法条")
 
+                    yield f"data: {json.dumps({'type': 'error', 'message': f'节点 [{dept_name}] 没有可用法条，请先给该节点打标签，或选择其他节点'})}\n\n"
+                    yield f"data: {json.dumps({'type': 'end', 'message': '生成终止', 'total': 0, 'questions': []})}\n\n"
+                    return
+
+                article_list = filtered
+                print(f"✅ 节点 [{dept_name}] 匹配到 {len(article_list)} 条法条")
+
+            else:
+                print(f"ℹ️ 未指定节点，使用全部 {len(article_list)} 条法条")
+
+            # ----------------------------------------------------
             # 生成题型计划
+            # ----------------------------------------------------
+
             import random
 
             if question_type in ("判断题", "单选题", "多选题"):
@@ -2235,7 +2262,24 @@ async def generate_questions_stream(
                 type_plan = [types[i % 3] for i in range(count)]
                 random.shuffle(type_plan)
 
-            # 读取历史题库（用于去重）
+            # ----------------------------------------------------
+            # ✅ 去重键升级：带 point_hash
+            # ----------------------------------------------------
+
+            import hashlib
+            import re as _re
+
+            def point_hash(point):
+                p = str(point or "").strip()
+                p = _re.sub(
+                    r"[\s，。、；：！？,.;:!?（）()【】\[\]「」『』\"'`]",
+                    "", p
+                ).lower()
+                if not p:
+                    return "__whole__"
+                return hashlib.md5(p.encode("utf-8")).hexdigest()[:12]
+
+            # 读取历史题库
             history_file = question_generator.get_question_file(law_name, use_new=False)
             history_questions = []
 
@@ -2248,48 +2292,83 @@ async def generate_questions_stream(
                 except Exception:
                     history_questions = []
 
-            used_questions = {
-                (
-                    item.get("article"),
-                    item.get("title_category_name")
-                )
-                for item in history_questions
-                if isinstance(item, dict)
-                and item.get("article")
-                and item.get("title_category_name")
-            }
+            used_questions = set()
+
+            for item in history_questions:
+                if not isinstance(item, dict):
+                    continue
+                art = item.get("article")
+                qtype = item.get("title_category_name")
+                if not art or not qtype:
+                    continue
+                ph = item.get("point_hash") or point_hash(item.get("point", ""))
+                used_questions.add((art, qtype, ph))
 
             failed_questions = set()
             new_questions = []
 
-            # 获取 _new.json 文件路径
+            article_points_cache = {}
+
             new_questions_file = question_generator.get_question_file(law_name, use_new=True)
 
-            # 循环生成每一道题
+            # ====================================================
+            # 循环生成
+            # ====================================================
+
             while success_count < count:
 
                 current_type = type_plan[success_count]
 
-                available = [
-                    item
-                    for item in article_list
-                    if (
-                        (item.get("article"), current_type)
-                        not in used_questions
-                    )
-                    and (
-                        (item.get("article"), current_type)
-                        not in failed_questions
-                    )
-                ]
+                shuffled = article_list[:]
+                random.shuffle(shuffled)
 
-                if not available:
-                    yield f"data: {json.dumps({'type': 'warning', 'message': f'当前题型 {current_type} 没有更多可用法规条文'})}\n\n"
+                candidate = None
+                candidate_point = ""
+                candidate_detail = ""
+
+                for item in shuffled:
+                    art = item.get("article", "")
+                    content = item.get("content", "")
+
+                    if not art or not content:
+                        continue
+
+                    if art not in article_points_cache:
+                        print(f"🔍 拆解法条 {art} 的考点……")
+                        points = question_generator.split_article_into_points(art, content)
+                        if not points:
+                            points = [{"point": "", "detail": content}]
+                        article_points_cache[art] = points
+
+                    points = article_points_cache[art]
+
+                    for p in points:
+                        h = point_hash(p["point"])
+                        key = (art, current_type, h)
+
+                        if key in used_questions or key in failed_questions:
+                            continue
+
+                        candidate = item
+                        candidate_point = p["point"]
+                        candidate_detail = p["detail"]
+                        break
+
+                    if candidate:
+                        break
+
+                if not candidate:
+                    yield f"data: {json.dumps({'type': 'warning', 'message': '没有更多可用考点'})}\n\n"
                     break
 
-                item = random.choice(available)
-                article = item.get("article", "")
-                content = item.get("content", "")
+                article = candidate.get("article", "")
+                content = candidate.get("content", "")
+
+                current_key = (
+                    article,
+                    current_type,
+                    point_hash(candidate_point)
+                )
 
                 question = question_generator.generate_one_question(
                     article,
@@ -2299,23 +2378,28 @@ async def generate_questions_stream(
                         "id": dept_id,
                         "fullName": dept_name,
                         "superiorName": superior_name,
-                        "category": dept_category
-                    }
+                        "category": dept_category,
+                    },
+                    point=candidate_point,
+                    detail=candidate_detail,
                 )
 
                 if question is None:
-                    failed_questions.add((article, current_type))
+                    failed_questions.add(current_key)
                     failed_count += 1
                     yield f"data: {json.dumps({'type': 'progress', 'message': f'第 {success_count + 1} 题生成失败，正在重试...', 'success': success_count, 'failed': failed_count, 'total': count})}\n\n"
                     continue
 
                 if question.get("title_category_name") != current_type:
-                    failed_questions.add((article, current_type))
+                    failed_questions.add(current_key)
                     failed_count += 1
                     continue
 
+                question["point"] = candidate_point
+                question["point_hash"] = point_hash(candidate_point)
+
                 new_questions.append(question)
-                used_questions.add((article, current_type))
+                used_questions.add(current_key)
                 success_count += 1
 
                 try:
@@ -2328,6 +2412,10 @@ async def generate_questions_stream(
                 yield f"data: {json.dumps({'type': 'question', 'question': question, 'index': success_count, 'total': count, 'success': success_count, 'failed': failed_count})}\n\n"
 
                 await asyncio.sleep(0.1)
+
+            # ----------------------------------------------------
+            # 追加历史题库
+            # ----------------------------------------------------
 
             if new_questions:
                 try:
@@ -2350,10 +2438,6 @@ async def generate_questions_stream(
                     yield f"data: {json.dumps({'type': 'error', 'message': f'追加历史题库失败：{e}'})}\n\n"
 
             yield f"data: {json.dumps({'type': 'end', 'message': f'生成完成，共生成 {success_count} 道题', 'total': success_count, 'questions': new_questions})}\n\n"
-
-        # ====================================================
-        # 返回 SSE 流式响应
-        # ====================================================
 
         return StreamingResponse(
             event_generator(),
@@ -2383,8 +2467,6 @@ async def generate_questions_stream(
                 "message": f"AI流式出题失败：{e}"
             }
         )
-        
-
         
 # ============================================================
 # 29. 读取最新题库（只读历史题库，排除 _new.json）

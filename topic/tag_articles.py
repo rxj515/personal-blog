@@ -1,10 +1,28 @@
+# -*- coding: utf-8 -*-
+
+"""
+打标签脚本（长条文分段 + 多标签 + 树节点直出）
+
+流程：
+    1. 从 study_dept_bank_type.xlsx 读树节点名（作为 AI 可选列表）
+    2. 读 data/knowledge/<PDF名>/articles.json
+    3. 对每条 type == "article" 或 "guide" 的条目打标签
+    4. 短条文（≤1500 字）：15 条一批，一次调 AI
+    5. 长条文（>1500 字）：按（一）（二）（三）切段，逐段调 AI，合并标签
+    6. 标签数量不设上限
+    7. 写回 dept_type_name（数组）和 dept_type_name_str（字符串）
+
+不再使用大类（采煤类/掘进类等），AI 直接输出树节点名。
+"""
+
 import json
 import requests
-import os
-import concurrent.futures
-import time
 import re
 from pathlib import Path
+import time
+
+import pandas as pd
+
 
 # ============================================================
 # 1. 自动读取 AI 配置
@@ -23,14 +41,59 @@ AI_API_KEY = ai_config.get("api_key", "")
 print(f"AI 接口地址: {AI_API_URL}")
 print(f"AI 模型: {AI_MODEL}")
 
-# 知识库目录
 KNOWLEDGE_DIR = BASE_DIR / "data" / "knowledge"
+EXCEL_PATH = BASE_DIR / "data" / "study_dept_bank_type.xlsx"
 
-# 合法的大类列表
-VALID_CATEGORIES = ["采煤类", "掘进类", "通风类", "机电类", "安全类", "探水类", "运输类", "全部工种"]
 
 # ============================================================
-# 全局进度变量
+# 2. ✅ 从 Excel 读取所有树节点名
+# ============================================================
+
+def load_all_nodes_from_excel():
+    """
+    从 Excel 读取所有节点名（去重），作为 AI 的可选标签列表。
+    """
+    if not EXCEL_PATH.exists():
+        print(f"❌ 找不到 Excel：{EXCEL_PATH}")
+        return []
+
+    df = pd.read_excel(EXCEL_PATH)
+    df = df.fillna("")
+
+    if "name" not in df.columns:
+        print(f"❌ Excel 里没有 'name' 列")
+        return []
+
+    nodes = []
+    seen = set()
+
+    for name in df["name"].astype(str):
+        name = name.strip()
+        if not name:
+            continue
+        if name in seen:
+            continue
+        seen.add(name)
+        nodes.append(name)
+
+    return nodes
+
+
+ALL_NODES = load_all_nodes_from_excel()
+
+print(f"✅ 从 Excel 读到 {len(ALL_NODES)} 个树节点")
+
+# 用于校验 AI 输出的合法节点
+VALID_NODES = set(ALL_NODES)
+
+# 长条文阈值
+LONG_TEXT_THRESHOLD = 1500
+SEGMENT_MAX_LEN = 1200
+BATCH_SIZE = 15
+
+
+# ============================================================
+# 3. 全局进度变量
 # ============================================================
 
 tag_progress = {
@@ -53,7 +116,10 @@ def ai_call(prompt):
             json={
                 "model": AI_MODEL,
                 "messages": [
-                    {"role": "system", "content": "你是一个专业的煤矿安全法规分类助手。只返回分类结果，不要输出其他内容。"},
+                    {
+                        "role": "system",
+                        "content": "你是一个专业的煤矿安全法规分类助手。只返回分类结果，不要输出其他内容。"
+                    },
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": 0.1
@@ -71,37 +137,300 @@ def get_progress():
     return tag_progress
 
 
-def extract_category_from_response(text):
-    """从 AI 返回的文本中提取分类结果"""
-    text = text.strip()
-    
-    # 直接匹配完整大类名
-    for category in VALID_CATEGORIES:
-        if category in text:
-            return category
-    
-    # 匹配 "xxx:采煤类" 格式
-    pattern = r'[：:]\s*([采掘通机安探运]+[类])'
-    match = re.search(pattern, text)
-    if match:
-        cat = match.group(1)
-        for category in VALID_CATEGORIES:
-            if category in cat:
-                return category
-    
-    # 匹配单独的类名
-    for category in VALID_CATEGORIES:
-        if category.replace("类", "") in text:
-            return category
-    
-    # 默认返回全部工种
-    return "全部工种"
+# ============================================================
+# 4. 长文本切段
+# ============================================================
 
+def split_long_text(text, max_len=SEGMENT_MAX_LEN):
+    if not text:
+        return [""]
+
+    if len(text) <= max_len:
+        return [text]
+
+    parts = re.split(r'(?=（[一二三四五六七八九十百零〇0-9]+）)', text)
+
+    segments = []
+    current = ""
+
+    for part in parts:
+        if not part.strip():
+            continue
+
+        if len(current) + len(part) <= max_len:
+            current += part
+        else:
+            if current:
+                segments.append(current)
+            current = part
+
+    if current:
+        segments.append(current)
+
+    final_segments = []
+    for seg in segments:
+        if len(seg) <= max_len * 2:
+            final_segments.append(seg)
+        else:
+            for i in range(0, len(seg), max_len):
+                final_segments.append(seg[i:i + max_len])
+
+    return final_segments or [text]
+
+
+# ============================================================
+# 5. ✅ 构建 Prompt（节点名清单喂给 AI）
+# ============================================================
+
+def build_node_list_text():
+    """把节点名拼成一段文本，用于 prompt"""
+    # 每行放 8 个，避免太长
+    lines = []
+    for i in range(0, len(ALL_NODES), 8):
+        chunk = ALL_NODES[i:i + 8]
+        lines.append("、".join(chunk))
+    return "\n".join(lines)
+
+
+NODE_LIST_TEXT = build_node_list_text()
+
+
+def build_prompt_for_batch(batch_data):
+    """
+    构建批量 prompt（短条文）。
+    """
+    batch_content = ""
+
+    for i, idx, item, segments in batch_data:
+        section = item.get("section", "")
+        content = item.get("content", "")
+
+        line = f"{i}. "
+        if section:
+            line += f"[{section}] "
+        line += content[:1500]
+
+        batch_content += line + "\n\n"
+
+    prompt = f"""
+请判断以下法条内容分别涉及哪些岗位或队（可以多选，没有数量限制）。
+
+【可选标签列表】（只能从下列节点名里选，不能自创）：
+{NODE_LIST_TEXT}
+
+【说明】
+- 综采、综采一队、采煤队、综采公共题目 → 采煤相关
+- 掘进开拓、掘进队、掘进二队、掘进公共题目 → 掘进相关
+- 运输、运输队、运输公共题目 → 运输相关
+- 机电、机电运输、机电队、机运队、地面机电队、机电公共题目 → 机电相关
+- 通风、通风队、通风公共题目、一通三防部 → 通风相关
+- 安全、安监部、安监科、安全监管部、安全公共题目、教育培训部、培训科 → 安全相关
+- 抽采、探水、探水队、地质防治水部 → 抽采/探水
+- 监控信息、监控中心、监控公共题目 → 监控相关
+- 各岗位（采煤机司机、爆破员、瓦斯员等）→ 按岗位职责判断
+
+【法条内容】
+{batch_content}
+
+【返回格式】
+每个法条一行，格式为"序号:节点1,节点2,..."：
+1:综采一队,采煤机司机
+2:通风队,安全
+3:掘进二队,爆破员,安全
+4:安监部门,安全公共题目
+
+【注意】
+1. 必须为每个法条都返回结果，序号从1到{len(batch_data)}
+2. 只能从上述可选标签列表中选择，不能自创节点名
+3. 每个法条可以返回 1 个或多个节点，用英文逗号分隔，能打几个就打几个
+4. 只打真正相关的，不确定的不要打
+5. 如果无法判断，返回"鑫隆煤业"
+6. 不要输出其他任何内容
+"""
+    return prompt
+
+
+def build_prompt_for_segment(item, segment, segment_index, total_segments):
+    """
+    构建单段 prompt（长条文）。
+    """
+    section = item.get("section", "")
+    header = ""
+    if section:
+        header += f"[{section}] "
+    if total_segments > 1:
+        header += f"（第 {segment_index}/{total_segments} 段）"
+
+    prompt = f"""
+请判断以下法条片段涉及哪些岗位或队（可以多选，没有数量限制）。
+
+【可选标签列表】（只能从下列节点名里选，不能自创）：
+{NODE_LIST_TEXT}
+
+{header}
+【法条片段】
+{segment}
+
+【返回格式】
+只返回一行，格式为"节点1,节点2,..."：
+综采一队,采煤机司机,安全
+
+【注意】
+1. 只能从上述可选标签列表中选择，不能自创节点名
+2. 可以返回 1 个或多个节点，用英文逗号分隔
+3. 只打真正相关的，不确定的不要打
+4. 如果无法判断，返回"鑫隆煤业"
+5. 不要输出其他任何内容
+"""
+    return prompt
+
+
+# ============================================================
+# 6. 解析 AI 返回
+# ============================================================
+
+def match_node(part):
+    """
+    从 AI 返回的一段文字里，匹配出合法的节点名。
+    - 优先完全匹配
+    - 其次子串匹配
+    """
+    part = part.strip()
+    if not part:
+        return None
+
+    # 完全匹配
+    if part in VALID_NODES:
+        return part
+
+    # 子串匹配：找最长的那个
+    best = None
+    for node in VALID_NODES:
+        if node in part:
+            if best is None or len(node) > len(best):
+                best = node
+
+    return best
+
+
+def parse_ai_response_for_batch(result, batch_data):
+    """
+    解析批量返回。
+    """
+    results = {}
+
+    if result is None:
+        for i, idx, item, segments in batch_data:
+            results[idx] = ["鑫隆煤业"]
+        return results
+
+    lines = result.strip().split("\n")
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        match = re.match(
+            r'^(?:第)?\s*(\d+)\s*[条]?\s*[：:.、\s]\s*(.+)$',
+            line,
+        )
+        if not match:
+            continue
+
+        num = int(match.group(1))
+        node_text = match.group(2).strip()
+
+        parts = re.split(r'[,，、;；\s]+', node_text)
+
+        matched_nodes = []
+
+        for part in parts:
+            node = match_node(part)
+            if node and node not in matched_nodes:
+                matched_nodes.append(node)
+
+        if not matched_nodes:
+            matched_nodes = ["鑫隆煤业"]
+
+        for i, idx, item, segments in batch_data:
+            if i == num:
+                if idx not in results:
+                    results[idx] = []
+                for tag in matched_nodes:
+                    if tag not in results[idx]:
+                        results[idx].append(tag)
+                break
+
+    # 补漏
+    for i, idx, item, segments in batch_data:
+        if idx not in results:
+            results[idx] = ["鑫隆煤业"]
+
+    return results
+
+
+def parse_segment_tags(result):
+    """
+    解析单段返回。
+    """
+    if not result:
+        return ["鑫隆煤业"]
+
+    result = result.strip()
+    result = re.sub(r'^(?:节点|分类|结果|答案|标签)\s*[：:]\s*', '', result)
+
+    parts = re.split(r'[,，、;；\s]+', result)
+
+    matched_nodes = []
+
+    for part in parts:
+        node = match_node(part)
+        if node and node not in matched_nodes:
+            matched_nodes.append(node)
+
+    return matched_nodes or ["鑫隆煤业"]
+
+
+# ============================================================
+# 7. 长条文处理
+# ============================================================
+
+def process_long_article(idx, item):
+    content = item.get("content", "")
+    segments = split_long_text(content)
+    total_segments = len(segments)
+
+    print(f"   🔍 长条文 {item.get('article', '')}：{len(content)} 字，切成 {total_segments} 段")
+
+    all_tags = []
+
+    for seg_idx, segment in enumerate(segments, 1):
+        prompt = build_prompt_for_segment(item, segment, seg_idx, total_segments)
+        result = ai_call(prompt)
+        tags = parse_segment_tags(result)
+
+        for tag in tags:
+            if tag not in all_tags:
+                all_tags.append(tag)
+
+        print(f"      段 {seg_idx}/{total_segments} → {tags}")
+
+        time.sleep(0.3)
+
+    if not all_tags:
+        all_tags = ["鑫隆煤业"]
+
+    print(f"   ✅ 长条文 {item.get('article', '')} 最终标签：{all_tags}")
+
+    return all_tags
+
+
+# ============================================================
+# 8. 处理单个知识库
+# ============================================================
 
 def process_single_knowledge(json_path, knowledge_name):
-    """
-    处理单个知识库文件，确保所有法条都能打上标签
-    """
     print()
     print("=" * 60)
     print(f"📄 处理知识库：{knowledge_name}")
@@ -118,10 +447,9 @@ def process_single_knowledge(json_path, knowledge_name):
         total = len(articles)
         print(f"   📊 共 {total} 条记录")
 
-        # 找出所有 article 类型的索引
         article_indices = [
             idx for idx, item in enumerate(articles)
-            if item.get("type") == "article"
+            if item.get("type") in ("article", "guide")
         ]
 
         if not article_indices:
@@ -130,158 +458,121 @@ def process_single_knowledge(json_path, knowledge_name):
 
         print(f"   📊 需要打标签的法条：{len(article_indices)} 条")
 
-        # ============================================================
-        # 配置参数
-        # ============================================================
+        short_indices = []
+        long_indices = []
 
-        BATCH_SIZE = 25  # 每批25条，更稳定
-        MAX_WORKERS = 2  # 并发数降低，避免 API 限流
+        for idx in article_indices:
+            content = articles[idx].get("content", "")
+            if len(content) > LONG_TEXT_THRESHOLD:
+                long_indices.append(idx)
+            else:
+                short_indices.append(idx)
 
-        # ============================================================
-        # 处理单个批次 - 强制返回所有法条的结果
-        # ============================================================
-
-        def process_batch(batch_indices, batch_idx):
-            """处理一个批次，强制为所有法条返回结果"""
-            batch_data = []
-            batch_content = ""
-            
-            # 构建批次内容，使用简洁的序号
-            for i, idx in enumerate(batch_indices, 1):
-                item = articles[idx]
-                content = item.get("content", "")[:200]
-                batch_data.append((i, idx, item))
-                batch_content += f"{i}. {content}\n\n"
-
-            prompt = f"""
-            请判断以下法条内容分别属于哪个大类？
-
-            大类列表：采煤类、掘进类、通风类、机电类、安全类、探水类、运输类
-
-            法条内容：
-            {batch_content}
-
-            请严格按照以下格式返回，每个法条一行，格式为"序号:大类名称"：
-            1:采煤类
-            2:通风类
-            3:安全类
-
-            注意：
-            1. 必须为每个法条都返回结果，序号从1到{len(batch_indices)}
-            2. 只能从上述大类列表中选择
-            3. 如果无法判断，返回"全部工种"
-            4. 不要输出其他任何内容
-            """
-
-            result = ai_call(prompt)
-            if result is None:
-                # AI 调用失败，所有法条标记为全部工种
-                print(f"   ⚠️ 批次 {batch_idx + 1} AI 调用失败，全部标记为全部工种")
-                return {idx: "全部工种" for _, idx, _ in batch_data}
-
-            # 解析结果
-            results = {}
-            lines = result.strip().split("\n")
-            
-            # 先尝试解析标准格式
-            for line in lines:
-                line = line.strip()
-                if not line:
-                    continue
-                
-                # 匹配 "序号:分类" 或 "序号：分类"
-                match = re.match(r'^(\d+)\s*[：:]\s*(.+)$', line)
-                if match:
-                    num = int(match.group(1))
-                    category = match.group(2).strip()
-                    # 提取大类名称
-                    for valid_cat in VALID_CATEGORIES:
-                        if valid_cat in category:
-                            # 找到对应的原始索引
-                            for i, idx, _ in batch_data:
-                                if i == num:
-                                    results[idx] = valid_cat
-                                    break
-                            break
-                    else:
-                        # 没匹配到合法大类，尝试模糊匹配
-                        for valid_cat in VALID_CATEGORIES:
-                            if valid_cat.replace("类", "") in category or category in valid_cat:
-                                for i, idx, _ in batch_data:
-                                    if i == num:
-                                        results[idx] = valid_cat
-                                        break
-                                break
-            
-            # 检查是否有遗漏的法条
-            missing_indices = set(idx for _, idx, _ in batch_data) - set(results.keys())
-            if missing_indices:
-                print(f"   ⚠️ 批次 {batch_idx + 1} 遗漏了 {len(missing_indices)} 条法条，补充为全部工种")
-                for idx in missing_indices:
-                    results[idx] = "全部工种"
-            
-            # 确保每个法条都有结果
-            for _, idx, _ in batch_data:
-                if idx not in results:
-                    results[idx] = "全部工种"
-            
-            return results
-
-        # ============================================================
-        # 生成所有批次
-        # ============================================================
-
-        batches = []
-        for i in range(0, len(article_indices), BATCH_SIZE):
-            batch = article_indices[i:i + BATCH_SIZE]
-            batches.append((i // BATCH_SIZE, batch))
-
-        print(f"   📦 共分成 {len(batches)} 批，每批 {BATCH_SIZE} 条")
-
-        # ============================================================
-        # 串行执行（避免并发冲突和 API 限流）
-        # ============================================================
+        print(f"   📊 短条文：{len(short_indices)} 条")
+        print(f"   📊 长条文：{len(long_indices)} 条")
 
         processed_count = 0
         total_articles = len(article_indices)
 
-        for batch_idx, batch_indices in batches:
+        # -----------------------------------------------------
+        # 先处理长条文
+        # -----------------------------------------------------
+
+        for idx in long_indices:
             try:
-                results = process_batch(batch_indices, batch_idx)
-                
-                # 更新文章
-                for idx, dept_name in results.items():
-                    if 0 <= idx < len(articles):
-                        articles[idx]["dept_type_name"] = dept_name
-                
-                # 保存
+                tags = process_long_article(idx, articles[idx])
+
+                # ✅ 直接写入树节点（不再有 dept_category）
+                articles[idx]["dept_type_name"] = tags
+                articles[idx]["dept_type_name_str"] = ",".join(tags)
+
+                processed_count += 1
+                print(f"   ✅ 已完成 {processed_count}/{total_articles} 条")
+
                 with open(json_path, "w", encoding="utf-8") as f:
                     json.dump(articles, f, ensure_ascii=False, indent=2)
-                
+
+            except Exception as e:
+                print(f"   ❌ 长条文 {articles[idx].get('article', '')} 处理失败：{e}")
+                articles[idx]["dept_type_name"] = ["鑫隆煤业"]
+                articles[idx]["dept_type_name_str"] = "鑫隆煤业"
+
+        # -----------------------------------------------------
+        # 再处理短条文（批量）
+        # -----------------------------------------------------
+
+        batches = []
+        for i in range(0, len(short_indices), BATCH_SIZE):
+            batch = short_indices[i:i + BATCH_SIZE]
+            batches.append((i // BATCH_SIZE, batch))
+
+        print(f"   📦 短条文共分成 {len(batches)} 批，每批 {BATCH_SIZE} 条")
+
+        for batch_idx, batch_indices in batches:
+            try:
+                batch_data = []
+                for i, idx in enumerate(batch_indices, 1):
+                    item = articles[idx]
+                    segments = [item.get("content", "")]
+                    batch_data.append((i, idx, item, segments))
+
+                prompt = build_prompt_for_batch(batch_data)
+                result = ai_call(prompt)
+                results = parse_ai_response_for_batch(result, batch_data)
+
+                for idx, dept_names in results.items():
+                    if 0 <= idx < len(articles):
+                        articles[idx]["dept_type_name"] = dept_names
+                        articles[idx]["dept_type_name_str"] = ",".join(dept_names)
+
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(articles, f, ensure_ascii=False, indent=2)
+
                 processed_count += len(batch_indices)
                 print(f"   ✅ 已完成 {processed_count}/{total_articles} 条")
-                
-                # 避免 API 限流
+
                 time.sleep(0.5)
-                
+
             except Exception as e:
                 print(f"   ❌ 批次 {batch_idx + 1} 处理失败：{e}")
 
-        # ============================================================
-        # 最终验证：确保所有 article 都有标签
-        # ============================================================
+        # -----------------------------------------------------
+        # 最终校验
+        # -----------------------------------------------------
 
         tagged_count = 0
         for item in articles:
-            if item.get("type") == "article":
+            if item.get("type") in ("article", "guide"):
                 if item.get("dept_type_name"):
                     tagged_count += 1
+
+                    # 兼容旧数据：字符串 → 列表
+                    if isinstance(item["dept_type_name"], str):
+                        item["dept_type_name"] = [
+                            x.strip()
+                            for x in item["dept_type_name"].split(",")
+                            if x.strip()
+                        ]
+
+                    # 清洗：去掉不合法的节点名
+                    if isinstance(item["dept_type_name"], list):
+                        item["dept_type_name"] = [
+                            n for n in item["dept_type_name"]
+                            if n in VALID_NODES
+                        ] or ["鑫隆煤业"]
+
+                    item["dept_type_name_str"] = ",".join(item["dept_type_name"])
+
                 else:
-                    # 如果还是没有标签，补上全部工种
-                    item["dept_type_name"] = "全部工种"
+                    item["dept_type_name"] = ["鑫隆煤业"]
+                    item["dept_type_name_str"] = "鑫隆煤业"
                     tagged_count += 1
-        
-        # 再次保存
+
+        # 顺便：删掉旧字段 dept_category（如果存在）
+        for item in articles:
+            if isinstance(item, dict) and "dept_category" in item:
+                del item["dept_category"]
+
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(articles, f, ensure_ascii=False, indent=2)
 
@@ -297,7 +588,7 @@ def process_single_knowledge(json_path, knowledge_name):
 
 
 # ============================================================
-# 主函数：遍历所有知识库
+# 9. 主函数
 # ============================================================
 
 def main():
@@ -312,8 +603,14 @@ def main():
 
     print()
     print("=" * 60)
-    print("🏷️  开始打工种标签...")
+    print("🏷️  开始打标签（树节点直出，无大类）...")
     print("=" * 60)
+
+    if not ALL_NODES:
+        print("❌ 没有读到任何树节点，检查 Excel 路径")
+        tag_progress["status"] = "error"
+        tag_progress["message"] = "没有读到树节点"
+        return
 
     try:
         if not KNOWLEDGE_DIR.exists():
@@ -353,7 +650,7 @@ def main():
 
         tag_progress["status"] = "done"
         tag_progress["processed"] = total_processed
-        tag_progress["message"] = f"✅ 全部完成！已为 {total_processed} 条法条打上 AI 标签"
+        tag_progress["message"] = f"✅ 全部完成！已为 {total_processed} 条法条打上树节点标签"
 
         return {
             "success": True,

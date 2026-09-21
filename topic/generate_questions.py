@@ -1,11 +1,11 @@
 # ============================================================
 # generate_questions.py
-# AI法规出题模块
+# AI法规出题模块（多维度标签 + 一条法规多考点版本）
 #
 # 职责：
 # 1. 读取法规知识库
-# 2. 调用AI
-# 3. 生成题目
+# 2. 拆解法条为多个考点
+# 3. 调用AI生成题目
 # 4. 验证题目
 # 5. 保存JSON题库
 #
@@ -15,11 +15,9 @@
 # 3. Excel导出
 #
 # AI配置统一由：
-#
 #     ai_config.py
 #
 # AI调用统一由：
-#
 #     ai_client.py
 #
 # ============================================================
@@ -27,7 +25,8 @@
 import json
 import random
 import re
-import uuid  # ✅ 新增：导入uuid
+import uuid
+import hashlib
 from pathlib import Path
 
 import ai_client
@@ -43,14 +42,16 @@ BASE_DIR = Path(
 
 
 # ============================================================
-# 2. 法规知识库
+# 2. 法规知识库目录
 # ============================================================
 
-ARTICLES_FILE = (
+KNOWLEDGE_DIR = (
     BASE_DIR
     / "data"
-    / "articles.json"
+    / "knowledge"
 )
+
+ARTICLES_FILE = KNOWLEDGE_DIR
 
 
 # ============================================================
@@ -77,6 +78,37 @@ CATEGORY_NAME = "法规"
 # ============================================================
 
 MAX_RETRY = 3
+
+
+# ============================================================
+# 5.1 ✅ 单条法条最多拆解出的考点数（按长度动态决定）
+# ============================================================
+
+MAX_POINTS_PER_ARTICLE = 15   # 兜底上限
+
+
+def get_max_points_by_length(content):
+    """
+    根据法条字数，动态决定最多拆几个考点。
+
+    < 200 字   → 3
+    < 500 字   → 5
+    < 1500 字  → 8
+    < 3000 字  → 12
+    >= 3000 字 → 15
+    """
+    length = len(content or "")
+
+    if length < 200:
+        return 3
+    elif length < 500:
+        return 5
+    elif length < 1500:
+        return 8
+    elif length < 3000:
+        return 12
+    else:
+        return 15
 
 
 # ============================================================
@@ -200,14 +232,173 @@ def get_question_file(law_name, use_new=False):
 
 
 # ============================================================
-# 10. Prompt
+# 9.1 考点归一化（用于稳定去重）
+# ============================================================
+
+def normalize_point(point):
+    """
+    对考点文本做归一化，避免AI措辞不同导致去重失效。
+    """
+    p = str(point or "").strip()
+
+    p = re.sub(
+        r"[\s，。、；：！？,.;:!?（）()【】\[\]「」『』\"'`]",
+        "",
+        p
+    )
+
+    return p.lower()
+
+
+def point_hash(point):
+    """
+    把归一化后的考点转成稳定的短hash。
+    """
+    normalized = normalize_point(point)
+
+    if not normalized:
+        return "__whole__"
+
+    return hashlib.md5(
+        normalized.encode("utf-8")
+    ).hexdigest()[:12]
+
+
+# ============================================================
+# 9.2 严格模式：按树节点过滤法条（不回退）
+# ============================================================
+
+def match_node(item, node_name):
+    """
+    判断一条法条的 dept_type_name 是否包含指定节点名。
+    严格模式：没有标签 = 不匹配
+    """
+    types = item.get("dept_type_name")
+
+    if types is None or types == "":
+        return False
+
+    if isinstance(types, str):
+        types = [t.strip() for t in types.split(",") if t.strip()]
+
+    if not isinstance(types, list) or not types:
+        return False
+
+    return node_name in types
+
+
+def filter_articles_by_node(article_list, node_name=None, superior_name=None):
+    """
+    严格按节点过滤，不回退。
+    匹配不到返回空列表。
+    """
+    if not node_name:
+        print(
+            f"ℹ️ 未指定节点，使用全部 "
+            f"{len(article_list)} 条法条"
+        )
+        return article_list
+
+    filtered = [
+        item for item in article_list
+        if match_node(item, node_name)
+    ]
+
+    if not filtered:
+        print(f"⚠️ 节点 [{node_name}] 没有可用法条")
+        return []
+
+    print(
+        f"✅ 节点 [{node_name}] 匹配到 "
+        f"{len(filtered)} 条法条"
+    )
+    return filtered
+
+
+# ============================================================
+# 9.3 加载知识库
+# ============================================================
+
+def load_articles(knowledge_name=None):
+    """
+    从 data/knowledge/ 加载 articles.json。
+    - 指定 knowledge_name：加载对应目录
+    - 未指定：合并所有知识库
+    返回 (articles, law_name)
+    """
+    if not KNOWLEDGE_DIR.exists():
+        print(f"❌ 知识库目录不存在：{KNOWLEDGE_DIR}")
+        return [], "法规"
+
+    if knowledge_name:
+        target = KNOWLEDGE_DIR / knowledge_name / "articles.json"
+        if not target.exists():
+            print(f"❌ 找不到知识库：{target}")
+            return [], "法规"
+
+        with open(target, "r", encoding="utf-8") as f:
+            articles = json.load(f)
+
+        print(f"📄 加载知识库：{knowledge_name}")
+        return articles, knowledge_name
+
+    # 未指定：合并所有
+    all_articles = []
+    for dir_path in sorted(KNOWLEDGE_DIR.iterdir()):
+        if not dir_path.is_dir():
+            continue
+
+        json_file = dir_path / "articles.json"
+        if not json_file.exists():
+            continue
+
+        try:
+            with open(json_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, list):
+                all_articles.extend(data)
+        except Exception as e:
+            print(f"⚠️ 读取 {json_file} 失败：{e}")
+
+    print(f"📄 合并加载全部知识库，共 {len(all_articles)} 条")
+    return all_articles, "全部法规"
+
+
+# ============================================================
+# 10. 出题Prompt（支持聚焦考点）
 # ============================================================
 
 def build_prompt(
     article,
     content,
-    question_type
+    question_type,
+    point=None,
+    detail=None
 ):
+
+    if point:
+
+        focus_block = f"""
+==================================================
+【本题聚焦考点】
+==================================================
+{point}
+
+==================================================
+【该考点对应原文】
+==================================================
+{detail or content}
+
+==================================================
+【聚焦要求（非常重要）】
+==================================================
+本题只能围绕"本题聚焦考点"出题。
+禁止涉及该法条中与本考点无关的其他规定。
+"""
+
+    else:
+
+        focus_block = ""
 
     prompt = f"""
 你是一名专业的法律法规考试出题专家。
@@ -223,7 +414,7 @@ def build_prompt(
 【法规原文】
 ==================================================
 {content}
-
+{focus_block}
 ==================================================
 【本题指定题型】
 ==================================================
@@ -246,13 +437,9 @@ def build_prompt(
 
 如果本题是判断题：
 
-plan_a必须填写：
+plan_a必须填写：正确
 
-正确
-
-plan_b必须填写：
-
-错误
+plan_b必须填写：错误
 
 plan_c必须为空。
 
@@ -262,13 +449,7 @@ plan_e必须为空。
 
 plan_f必须为空。
 
-answer只能是：
-
-A
-
-或者：
-
-B
+answer只能是：A 或者 B
 
 ==================================================
 【单选题要求】
@@ -291,12 +472,7 @@ plan_f必须为空。
 
 必须只有一个正确答案。
 
-answer只能是：
-
-A
-B
-C
-D
+answer只能是：A B C D
 
 ==================================================
 【多选题要求】
@@ -306,14 +482,7 @@ D
 
 至少生成3个有效选项。
 
-可以使用：
-
-A
-B
-C
-D
-E
-F
+可以使用：A B C D E F
 
 必须至少有2个正确答案。
 
@@ -325,19 +494,11 @@ A,B
 
 A,C,D
 
-或者：
-
-A,B,D,E
-
 必须使用英文逗号。
 
-不要使用：
+不要使用：ABC
 
-ABC
-
-不要使用：
-
-A、B、C
+不要使用：A、B、C
 
 ==================================================
 【所有题型共同要求】
@@ -393,19 +554,23 @@ title_category_name必须严格等于：
 
 
 # ============================================================
-# 11. 调用AI
+# 11. 调用AI（支持考点）
 # ============================================================
 
 def ask_ai(
     article,
     content,
-    question_type
+    question_type,
+    point=None,
+    detail=None
 ):
 
     prompt = build_prompt(
         article,
         content,
-        question_type
+        question_type,
+        point,
+        detail
     )
 
     return ai_client.generate(
@@ -422,10 +587,6 @@ def clean_ai_json(text):
     text = str(
         text
     ).strip()
-
-    # --------------------------------------------------------
-    # 去掉Markdown代码块
-    # --------------------------------------------------------
 
     if text.startswith("```"):
 
@@ -446,18 +607,15 @@ def clean_ai_json(text):
 
 
 # ============================================================
-# 13. 验证题目（✅ 已添加ID生成）
+# 13. 验证题目（新增 point 字段保存）
 # ============================================================
 
 def validate_question(
     text,
     article,
-    expected_type
+    expected_type,
+    point=None
 ):
-
-    # --------------------------------------------------------
-    # JSON
-    # --------------------------------------------------------
 
     try:
 
@@ -487,10 +645,6 @@ def validate_question(
 
         return None
 
-    # --------------------------------------------------------
-    # 必须字段
-    # --------------------------------------------------------
-
     required_fields = [
 
         "title_category_name",
@@ -515,10 +669,6 @@ def validate_question(
 
             return None
 
-    # --------------------------------------------------------
-    # E/F
-    # --------------------------------------------------------
-
     if "plan_e" not in question:
 
         question["plan_e"] = ""
@@ -526,10 +676,6 @@ def validate_question(
     if "plan_f" not in question:
 
         question["plan_f"] = ""
-
-    # --------------------------------------------------------
-    # 字符串统一
-    # --------------------------------------------------------
 
     for field in [
 
@@ -547,19 +693,11 @@ def validate_question(
             question[field]
         ).strip()
 
-    # --------------------------------------------------------
-    # 题型
-    # --------------------------------------------------------
-
     category = str(
         question[
             "title_category_name"
         ]
     ).strip()
-
-    # --------------------------------------------------------
-    # 题型必须完全一致
-    # --------------------------------------------------------
 
     if category != expected_type:
 
@@ -578,10 +716,6 @@ def validate_question(
 
         return None
 
-    # --------------------------------------------------------
-    # 题目
-    # --------------------------------------------------------
-
     if not question["subjects"]:
 
         print(
@@ -589,10 +723,6 @@ def validate_question(
         )
 
         return None
-
-    # --------------------------------------------------------
-    # 解析
-    # --------------------------------------------------------
 
     if not question["analysis"]:
 
@@ -713,10 +843,6 @@ def validate_question(
             if option
         ]
 
-        # ----------------------------------------------------
-        # 至少3个
-        # ----------------------------------------------------
-
         if len(valid_options) < 3:
 
             print(
@@ -724,10 +850,6 @@ def validate_question(
             )
 
             return None
-
-        # ----------------------------------------------------
-        # 不能重复
-        # ----------------------------------------------------
 
         if len(valid_options) != len(
             set(valid_options)
@@ -738,10 +860,6 @@ def validate_question(
             )
 
             return None
-
-        # ----------------------------------------------------
-        # 答案
-        # ----------------------------------------------------
 
         answer = str(
             question["answer"]
@@ -769,10 +887,6 @@ def validate_question(
             if x.strip()
         ]
 
-        # ----------------------------------------------------
-        # 至少两个答案
-        # ----------------------------------------------------
-
         if len(answer_list) < 2:
 
             print(
@@ -780,10 +894,6 @@ def validate_question(
             )
 
             return None
-
-        # ----------------------------------------------------
-        # 合法字母
-        # ----------------------------------------------------
 
         valid_letters = [
 
@@ -806,19 +916,11 @@ def validate_question(
 
                 return None
 
-        # ----------------------------------------------------
-        # 去重
-        # ----------------------------------------------------
-
         answer_list = list(
             dict.fromkeys(
                 answer_list
             )
         )
-
-        # ----------------------------------------------------
-        # 选项映射
-        # ----------------------------------------------------
 
         option_map = {
 
@@ -829,10 +931,6 @@ def validate_question(
             "E": question["plan_e"],
             "F": question["plan_f"]
         }
-
-        # ----------------------------------------------------
-        # 答案必须对应有效选项
-        # ----------------------------------------------------
 
         for answer_item in answer_list:
 
@@ -860,13 +958,11 @@ def validate_question(
 
         return None
 
-    # --------------------------------------------------------
-    # 保存法规条文
-    # --------------------------------------------------------
-
     question["article"] = article
 
-    # 保存分类信息
+    question["point"] = str(point or "").strip()
+    question["point_hash"] = point_hash(point)
+
     question["dept_id"] = ""
     question["dept_name"] = ""
     question["superior_name"] = ""
@@ -879,14 +975,16 @@ def validate_question(
 
 
 # ============================================================
-# 14. 生成一道题
+# 14. 生成一道题（支持考点）
 # ============================================================
 
 def generate_one_question(
     article,
     content,
     question_type,
-    dept_info=None
+    dept_info=None,
+    point=None,
+    detail=None
 ):
 
     for retry in range(
@@ -902,29 +1000,35 @@ def generate_one_question(
             f" 第{retry}/{MAX_RETRY}次"
         )
 
+        if point:
+            print(f"  考点：{point}")
+
         try:
 
             raw_result = ask_ai(
                 article,
                 content,
-                question_type
+                question_type,
+                point,
+                detail
             )
 
             question = validate_question(
                 raw_result,
                 article,
-                question_type
+                question_type,
+                point
             )
 
             if question and dept_info:
 
-                question["dept_id"] = dept_info.get("id","")
+                question["dept_id"] = dept_info.get("id", "")
 
-                question["dept_name"] = dept_info.get("fullName","")
+                question["dept_name"] = dept_info.get("fullName", "")
 
-                question["superior_name"] = dept_info.get("superiorName","")
+                question["superior_name"] = dept_info.get("superiorName", "")
 
-                question["dept_type_name"] = dept_info.get("category","")
+                question["dept_type_name"] = dept_info.get("category", "")
 
             if question:
 
@@ -963,10 +1067,6 @@ def create_question_type_plan(
     question_type=None
 ):
 
-    # --------------------------------------------------------
-    # 指定题型
-    # --------------------------------------------------------
-
     if question_type in (
 
         "判断题",
@@ -989,10 +1089,6 @@ def create_question_type_plan(
 
         return plan
 
-    # --------------------------------------------------------
-    # 自动混合
-    # --------------------------------------------------------
-
     types = [
 
         "判断题",
@@ -1014,12 +1110,148 @@ def create_question_type_plan(
 
 
 # ============================================================
-# 16. 主程序
+# 16. 法条拆解为多个考点
+# ============================================================
+
+def build_split_prompt(article, content, max_points=8):
+
+    prompt = f"""
+你是一名法律法规考试出题专家。
+
+请把下面这条法规拆解成若干个"独立考点"。
+
+==================================================
+【法规条文】
+==================================================
+{article}
+
+==================================================
+【法规原文】
+==================================================
+{content}
+
+==================================================
+【拆解要求】
+==================================================
+
+1. 每个考点必须是法规原文中一个独立、完整、可单独出题的规定。
+2. 一个考点只对应一个法律要求，不要把多个规定混在一起。
+3. 如果原文包含"严禁A、严禁B、严禁C"，A/B/C应拆成3个考点。
+4. 如果原文有"必须X、禁止Y"，X和Y是两个考点。
+5. 如果原文是"禁止...，但...除外"，把这个例外也作为一个独立考点。
+6. 最多拆解出 {max_points} 个考点，至少1个。
+7. 每个考点用一句话概括，不超过30字，不要直接抄原文。
+8. 只输出JSON数组，不要输出其他任何内容。
+9. 不要输出Markdown代码块。
+
+==================================================
+【JSON格式】
+==================================================
+
+[
+    {{
+        "point": "考点简述（不超过30字）",
+        "detail": "该考点对应的法规原文片段"
+    }}
+]
+
+只输出JSON数组。
+"""
+
+    return prompt
+
+
+def split_article_into_points(
+    article,
+    content,
+    max_points=None
+):
+    """
+    调用AI把一条法条拆解成多个考点。
+    max_points 为 None 时，按法条长度自动决定（见 get_max_points_by_length）。
+    返回 list[dict]，每个 dict 含 point / detail。
+    失败返回 []（调用方应降级为整条作为一个考点）。
+    """
+
+    # ✅ 按长度自动决定
+    if max_points is None:
+        max_points = get_max_points_by_length(content)
+
+    prompt = build_split_prompt(
+        article,
+        content,
+        max_points
+    )
+
+    try:
+
+        raw = ai_client.generate(prompt)
+
+        raw = clean_ai_json(raw)
+
+        points = json.loads(raw)
+
+        if not isinstance(points, list):
+
+            print(
+                "⚠️ 拆解结果不是数组，降级为整条法条"
+            )
+
+            return []
+
+        valid = []
+
+        seen_hashes = set()
+
+        for p in points:
+
+            if not isinstance(p, dict):
+                continue
+
+            point = str(
+                p.get("point", "")
+            ).strip()
+
+            detail = str(
+                p.get("detail", "")
+            ).strip()
+
+            if not point:
+                continue
+
+            h = point_hash(point)
+
+            if h in seen_hashes:
+                continue
+
+            seen_hashes.add(h)
+
+            valid.append({
+                "point": point,
+                "detail": detail or content
+            })
+
+        return valid[:max_points]
+
+    except Exception as e:
+
+        print(
+            f"❌ 法条拆解失败：{e}"
+        )
+
+        return []
+
+
+# ============================================================
+# 17. 主程序
 # ============================================================
 
 def main(
     question_type=None,
-    count=None
+    count=None,
+    knowledge_name=None,
+    node_name=None,
+    superior_name=None,
 ):
 
     print()
@@ -1028,7 +1260,7 @@ def main(
     )
 
     print(
-        "       法规 AI 出题系统"
+        "       法规 AI 出题系统（多考点版）"
     )
 
     print(
@@ -1045,13 +1277,11 @@ def main(
         "========== 网页传入参数 =========="
     )
 
-    print(
-        f"question_type = {question_type!r}"
-    )
-
-    print(
-        f"count         = {count!r}"
-    )
+    print(f"question_type  = {question_type!r}")
+    print(f"count          = {count!r}")
+    print(f"knowledge_name = {knowledge_name!r}")
+    print(f"node_name      = {node_name!r}")
+    print(f"superior_name  = {superior_name!r}")
 
     print(
         "=================================="
@@ -1118,10 +1348,6 @@ def main(
         "================================"
     )
 
-    # ========================================================
-    # 无法识别题型
-    # ========================================================
-
     if (
 
         original_question_type is not None
@@ -1151,10 +1377,7 @@ def main(
         }
 
     # ========================================================
-    # 显示当前AI配置
-    #
-    # 注意：
-    # generate_questions.py不修改AI配置。
+    # AI 配置
     # ========================================================
 
     try:
@@ -1191,10 +1414,6 @@ def main(
             f"⚠️ 获取AI配置失败：{e}"
         )
 
-    # ========================================================
-    # 显示题型
-    # ========================================================
-
     if question_type:
 
         print(
@@ -1212,116 +1431,33 @@ def main(
     )
 
     # ========================================================
-    # 法规文件
+    # 加载知识库
     # ========================================================
 
-    if not ARTICLES_FILE.exists():
+    articles, law_name = load_articles(
+        knowledge_name
+    )
 
-        print()
-
-        print(
-            "❌ 找不到法规文件："
-        )
-
-        print(
-            ARTICLES_FILE.resolve()
-        )
+    if not articles:
 
         return {
 
             "success": False,
-            "message": "找不到法规知识库",
+            "message": "没有找到可用的法规知识库",
             "count": 0
         }
 
-    # ========================================================
-    # 读取法规
-    # ========================================================
-
-    try:
-
-        with open(
-            ARTICLES_FILE,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
-            articles = json.load(f)
-
-    except Exception as e:
-
-        print(
-            f"❌ 法规JSON读取失败：{e}"
-        )
+    if not isinstance(articles, list):
 
         return {
 
             "success": False,
-
-            "message":
-                f"法规JSON读取失败：{e}",
-
-            "count": 0
-        }
-
-    # ========================================================
-    # 格式检查
-    # ========================================================
-
-    if not isinstance(
-        articles,
-        list
-    ):
-
-        print(
-            "❌ 法规JSON格式错误，必须是数组"
-        )
-
-        return {
-
-            "success": False,
-
-            "message":
-                "法规JSON格式错误，必须是数组",
-
+            "message": "法规JSON格式错误，必须是数组",
             "count": 0
         }
 
     print()
-
-    print(
-        f"知识库总记录数："
-        f"{len(articles)}"
-    )
-
-    # ========================================================
-    # 法规名称
-    # ========================================================
-
-    law_names = {
-
-        item.get("law_name")
-
-        for item in articles
-
-        if isinstance(item, dict)
-
-        and item.get("law_name")
-    }
-
-    if law_names:
-
-        law_name = list(
-            law_names
-        )[0]
-
-    else:
-
-        law_name = "法规"
-
-    print(
-        f"当前法规：{law_name}"
-    )
+    print(f"知识库总记录数：{len(articles)}")
 
     # ========================================================
     # 可出题条文
@@ -1343,7 +1479,6 @@ def main(
     ]
 
     print()
-
     print(
         f"可用于出题的法规条文："
         f"{len(article_list)} 条"
@@ -1351,17 +1486,29 @@ def main(
 
     if not article_list:
 
-        print(
-            "❌ 没有找到可用于出题的法规条文"
-        )
+        return {
+
+            "success": False,
+            "message": "没有找到可用于出题的法规条文",
+            "count": 0
+        }
+
+    # ========================================================
+    # 严格按节点过滤
+    # ========================================================
+
+    article_list = filter_articles_by_node(
+        article_list,
+        node_name=node_name,
+        superior_name=superior_name,
+    )
+
+    if not article_list:
 
         return {
 
             "success": False,
-
-            "message":
-                "没有找到可用于出题的法规条文",
-
+            "message": f"节点 [{node_name}] 没有可用法条",
             "count": 0
         }
 
@@ -1369,37 +1516,22 @@ def main(
     # JSON题库
     # ========================================================
 
-    # 使用 _new 后缀，只存本次新题
     new_questions_file = get_question_file(
         law_name,
         use_new=True
     )
 
-    # 历史题库文件（不带 _new）
     history_file = get_question_file(
         law_name,
         use_new=False
     )
 
     print()
-
-    print(
-        "本次新题JSON："
-    )
-
-    print(
-        new_questions_file.resolve()
-    )
-
+    print("本次新题JSON：")
+    print(new_questions_file.resolve())
     print()
-
-    print(
-        "历史题库JSON："
-    )
-
-    print(
-        history_file.resolve()
-    )
+    print("历史题库JSON：")
+    print(history_file.resolve())
 
     # ========================================================
     # 题型计划
@@ -1413,25 +1545,15 @@ def main(
     )
 
     print()
-
     print(
         "===================================="
     )
-
-    print(
-        "本次题型安排："
-    )
-
+    print("本次题型安排：")
     for i, current_type in enumerate(
         question_type_plan,
         start=1
     ):
-
-        print(
-            f"第{i}题："
-            f"{current_type}"
-        )
-
+        print(f"第{i}题：{current_type}")
     print(
         "===================================="
     )
@@ -1471,7 +1593,6 @@ def main(
             history_questions = []
 
     print()
-
     print(
         f"当前法规已有历史题目："
         f"{len(history_questions)} 道"
@@ -1481,43 +1602,41 @@ def main(
     # 去重
     # ========================================================
 
-    used_questions = {
+    used_questions = set()
 
-        (
-            item.get("article"),
-            item.get("title_category_name")
-        )
+    for item in history_questions:
 
-        for item in history_questions
+        if not isinstance(item, dict):
+            continue
 
-        if isinstance(item, dict)
+        art = item.get("article")
+        qtype = item.get("title_category_name")
 
-        and item.get("article")
+        if not art or not qtype:
+            continue
 
-        and item.get(
-            "title_category_name"
-        )
-    }
+        ph = item.get("point_hash")
+
+        if not ph:
+            ph = point_hash(item.get("point", ""))
+
+        used_questions.add((art, qtype, ph))
 
     print(
         "已经使用过的"
-        "法规条文+题型组合："
+        "法规条文+题型+考点组合："
         f"{len(used_questions)} 个"
     )
 
-    # ========================================================
-    # 临时失败集合
-    # ========================================================
-
     failed_questions = set()
+
+    article_points_cache = {}
 
     # ========================================================
     # 开始生成
     # ========================================================
 
     success_count = 0
-
-    # 新生成的题单独放
     new_questions = []
 
     while success_count < count:
@@ -1528,129 +1647,130 @@ def main(
             ]
         )
 
-        # ----------------------------------------------------
-        # 找可用法规（排除历史已有和本次失败的）
-        # ----------------------------------------------------
+        shuffled = article_list[:]
+        random.shuffle(shuffled)
 
-        available = [
+        candidate = None
+        candidate_point = ""
+        candidate_detail = ""
 
-            item
+        for item in shuffled:
 
-            for item in article_list
+            art = item.get("article", "")
+            content = item.get("content", "")
 
-            if (
+            if not art or not content:
+                continue
 
-                (
-                    item.get("article"),
-                    current_type
+            if art not in article_points_cache:
+
+                print()
+                print(
+                    f"🔍 正在拆解法条 "
+                    f"{art} 的考点……"
+                    f"（长度 {len(content)} 字）"
                 )
 
-                not in used_questions
-
-            )
-
-            and (
-
-                (
-                    item.get("article"),
-                    current_type
+                # ✅ 不传 max_points，会自动按长度决定
+                points = split_article_into_points(
+                    art,
+                    content
                 )
 
-                not in failed_questions
+                if not points:
 
-            )
-        ]
+                    print(
+                        f"⚠️ 法条 {art} 拆解失败，"
+                        f"降级为整条作为一个考点"
+                    )
 
-        # ----------------------------------------------------
-        # 没有可用法规
-        # ----------------------------------------------------
+                    points = [{
+                        "point": "",
+                        "detail": content
+                    }]
 
-        if not available:
+                else:
+
+                    print(
+                        f"✅ 法条 {art} 拆解出 "
+                        f"{len(points)} 个考点："
+                    )
+
+                    for idx, p in enumerate(points, 1):
+                        print(
+                            f"   {idx}. {p['point']}"
+                        )
+
+                article_points_cache[art] = points
+
+            points = article_points_cache[art]
+
+            for p in points:
+
+                h = point_hash(p["point"])
+
+                key = (art, current_type, h)
+
+                if key in used_questions:
+                    continue
+
+                if key in failed_questions:
+                    continue
+
+                candidate = item
+                candidate_point = p["point"]
+                candidate_detail = p["detail"]
+                break
+
+            if candidate:
+                break
+
+        if not candidate:
 
             print()
-
             print(
-                "⚠️ 当前题型没有更多"
-                "可用法规条文。"
-            )
-
-            print(
-                f"当前题型：{current_type}"
-            )
-
-            print(
-                "无法继续生成该题型。"
+                "⚠️ 所有法条的可用考点已耗尽，"
+                "无法继续生成。"
             )
 
             break
 
-        # ----------------------------------------------------
-        # 随机法规
-        # ----------------------------------------------------
-
-        item = random.choice(
-            available
-        )
-
-        article = item.get(
-            "article",
-            ""
-        )
-
-        content = item.get(
-            "content",
-            ""
-        )
-
-        # ----------------------------------------------------
-        # 当前组合
-        # ----------------------------------------------------
+        article = candidate.get("article", "")
+        content = candidate.get("content", "")
 
         current_key = (
             article,
-            current_type
+            current_type,
+            point_hash(candidate_point)
         )
 
         print()
-
         print(
             "===================================="
         )
-
         print(
             f"正在生成第"
             f"{success_count + 1}/{count}道题"
         )
-
         print()
-
-        print(
-            f"指定题型：{current_type}"
-        )
-
+        print(f"指定题型：{current_type}")
         print()
+        print(f"法规：{article}")
 
-        print(
-            f"法规：{article}"
-        )
+        if candidate_point:
+            print(f"考点：{candidate_point}")
 
         print(
             "===================================="
         )
 
-        # ====================================================
-        # 生成
-        # ====================================================
-
         question = generate_one_question(
             article,
             content,
-            current_type
+            current_type,
+            point=candidate_point,
+            detail=candidate_detail
         )
-
-        # ----------------------------------------------------
-        # AI生成失败
-        # ----------------------------------------------------
 
         if question is None:
 
@@ -1659,54 +1779,29 @@ def main(
             )
 
             print(
-                "⚠️ 本条法规+题型"
-                "本次生成失败，"
+                "⚠️ 该考点本次生成失败，"
                 "暂时跳过。"
             )
 
             continue
-
-        # ====================================================
-        # 再次强制检查
-        # ====================================================
 
         if question.get(
             "title_category_name"
         ) != current_type:
 
             print()
-
-            print(
-                "❌❌❌ 严重错误"
-            )
-
-            print(
-                f"计划题型：{current_type}"
-            )
-
+            print("❌❌❌ 严重错误")
+            print(f"计划题型：{current_type}")
             print(
                 "实际题型："
                 f"{question.get('title_category_name')}"
             )
 
-            failed_questions.add(
-                current_key
-            )
-
+            failed_questions.add(current_key)
             continue
 
-        # ====================================================
-        # 保存到新题列表
-        # ====================================================
-
-        new_questions.append(
-            question
-        )
-
-        used_questions.add(
-            current_key
-        )
-
+        new_questions.append(question)
+        used_questions.add(current_key)
         success_count += 1
 
         # ====================================================
@@ -1714,72 +1809,27 @@ def main(
         # ====================================================
 
         print()
-
         print(
             "------------------------------------"
         )
-
-        print(
-            f"题型："
-            f"{question['title_category_name']}"
-        )
-
-        print(
-            f"题目："
-            f"{question['subjects']}"
-        )
-
-        print(
-            f"A："
-            f"{question['plan_a']}"
-        )
-
-        print(
-            f"B："
-            f"{question['plan_b']}"
-        )
-
-        print(
-            f"C："
-            f"{question['plan_c']}"
-        )
-
-        print(
-            f"D："
-            f"{question['plan_d']}"
-        )
-
-        print(
-            f"E："
-            f"{question['plan_e']}"
-        )
-
-        print(
-            f"F："
-            f"{question['plan_f']}"
-        )
-
-        print(
-            f"正确答案："
-            f"{question['answer']}"
-        )
-
-        print(
-            f"解析："
-            f"{question['analysis']}"
-        )
-
-        print(
-            f"ID："
-            f"{question.get('id', '无ID')}"
-        )
-
+        print(f"题型：{question['title_category_name']}")
+        print(f"题目：{question['subjects']}")
+        print(f"A：{question['plan_a']}")
+        print(f"B：{question['plan_b']}")
+        print(f"C：{question['plan_c']}")
+        print(f"D：{question['plan_d']}")
+        print(f"E：{question['plan_e']}")
+        print(f"F：{question['plan_f']}")
+        print(f"正确答案：{question['answer']}")
+        print(f"解析：{question['analysis']}")
+        print(f"考点：{question.get('point', '')}")
+        print(f"ID：{question.get('id', '无ID')}")
         print(
             "------------------------------------"
         )
 
         # ====================================================
-        # 保存 _new.json（只存本次新题，覆盖）
+        # 保存 _new.json
         # ====================================================
 
         try:
@@ -1806,42 +1856,30 @@ def main(
             return {
 
                 "success": False,
-
-                "message":
-                    f"_new.json保存失败：{e}",
-
-                "count":
-                    success_count,
-
-                "questions":
-                    new_questions,
-
-                "json_file":
-                    str(
-                        new_questions_file.resolve()
-                    )
+                "message": f"_new.json保存失败：{e}",
+                "count": success_count,
+                "questions": new_questions,
+                "json_file": str(
+                    new_questions_file.resolve()
+                )
             }
 
         print()
-
         print(
             f"💾 _new.json已保存："
             f"{new_questions_file.resolve()}"
         )
 
     # ========================================================
-    # while 循环结束（所有题目已生成完成）
+    # 追加历史题库
     # ========================================================
 
-    # ========================================================
-    # 统一追加到历史题库（只追加一次）
-    # ========================================================
+    final_history_count = len(history_questions)
 
     if new_questions:
 
         try:
 
-            # 读取历史题库
             current_history = []
 
             if history_file.exists():
@@ -1867,12 +1905,8 @@ def main(
 
                     current_history = []
 
-            # 追加新题（只追加一次）
-            current_history.extend(
-                new_questions
-            )
+            current_history.extend(new_questions)
 
-            # 保存历史题库
             with open(
                 history_file,
                 "w",
@@ -1886,15 +1920,16 @@ def main(
                     indent=2
                 )
 
+            final_history_count = len(current_history)
+
             print()
             print(
                 f"💾 历史题库已追加："
                 f"{history_file.resolve()}"
             )
-
             print(
                 f"   历史题库现有："
-                f"{len(current_history)} 道"
+                f"{final_history_count} 道"
             )
 
         except Exception as e:
@@ -1906,20 +1941,12 @@ def main(
             return {
 
                 "success": False,
-
-                "message":
-                    f"历史题库追加失败：{e}",
-
-                "count":
-                    success_count,
-
-                "questions":
-                    new_questions,
-
-                "json_file":
-                    str(
-                        new_questions_file.resolve()
-                    )
+                "message": f"历史题库追加失败：{e}",
+                "count": success_count,
+                "questions": new_questions,
+                "json_file": str(
+                    new_questions_file.resolve()
+                )
             }
 
     # ========================================================
@@ -1927,65 +1954,27 @@ def main(
     # ========================================================
 
     print()
-
     print(
         "===================================="
     )
-
-    print(
-        "             出题完成"
-    )
-
+    print("             出题完成")
     print(
         "===================================="
     )
-
     print()
-
-    print(
-        f"本次成功生成："
-        f"{success_count} 道"
-    )
-
-    print(
-        f"历史题库总数量："
-        f"{len(history_questions) + success_count} 道"
-    )
-
-    print(
-        f"本次新题数量："
-        f"{len(new_questions)} 道"
-    )
-
+    print(f"本次成功生成：{success_count} 道")
+    print(f"历史题库总数量：{final_history_count} 道")
+    print(f"本次新题数量：{len(new_questions)} 道")
     print()
-
-    print(
-        "📦 历史题库位置："
-    )
-
-    print(
-        history_file.resolve()
-    )
-
+    print("📦 历史题库位置：")
+    print(history_file.resolve())
     print()
-
-    print(
-        "📦 本次新题位置："
-    )
-
-    print(
-        new_questions_file.resolve()
-    )
-
+    print("📦 本次新题位置：")
+    print(new_questions_file.resolve())
     print()
-
     print(
         "===================================="
     )
-
-    # ========================================================
-    # 返回
-    # ========================================================
 
     return {
 
@@ -1993,31 +1982,24 @@ def main(
 
         "message": (
             "AI题目生成完成，"
-            f"本次成功生成"
-            f"{success_count}道"
+            f"本次成功生成{success_count}道"
         ),
 
-        "count":
-            success_count,
+        "count": success_count,
 
-        "history_count":
-            len(history_questions) + success_count,
+        "history_count": final_history_count,
 
-        "new_count":
-            len(new_questions),
+        "new_count": len(new_questions),
 
-        "history_file":
-            str(
-                history_file.resolve()
-            ),
+        "history_file": str(
+            history_file.resolve()
+        ),
 
-        "json_file":
-            str(
-                new_questions_file.resolve()
-            ),
+        "json_file": str(
+            new_questions_file.resolve()
+        ),
 
-        "questions":
-            new_questions
+        "questions": new_questions
     }
 
 
@@ -2027,18 +2009,10 @@ def main(
 
 if __name__ == "__main__":
 
-    print(
-        "generate_questions.py"
-    )
-
-    print(
-        "现在只负责AI出题和JSON保存。"
-    )
-
-    print(
-        "AI模型由config/ai_config.json统一决定。"
-    )
-
+    print("generate_questions.py")
+    print("现在支持：一条法规拆解多个考点，每个考点独立出题。")
+    print("考点数按法条长度动态决定。")
+    print("AI模型由config/ai_config.json统一决定。")
     print()
 
     # --------------------------------------------------------
@@ -2047,15 +2021,13 @@ if __name__ == "__main__":
 
     result = main(
         question_type="判断题",
-        count=1
+        count=3,
+        knowledge_name="山西统筹煤炭安全新规通知",
+        node_name="安全",
     )
 
     print()
-
-    print(
-        "测试结果："
-    )
-
+    print("测试结果：")
     print(
         json.dumps(
             result,
