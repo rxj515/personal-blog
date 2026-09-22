@@ -2650,6 +2650,69 @@ async def generate_questions_stream(
                 "message": f"AI流式出题失败：{e}"
             }
         )
+
+
+import re
+
+
+@app.get("/api/dept/tag-count")
+async def dept_tag_count(source: str = ""):
+    """
+    统计当前 PDF 下，每个分类名出现的法条数量
+    用于前端标记“暂无对应法条”的分类
+    """
+
+    # 1. 没传 source 就读 pdf_config.json
+    if not source:
+        config_file = CONFIG_DIR / "pdf_config.json"
+        if config_file.exists():
+            with open(config_file, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                source = config.get("current_pdf", "")
+
+    if not source:
+        return {"success": True, "data": {}}
+
+    # 2. 定位 articles.json
+    source_name = source[:-4] if source.endswith(".pdf") else source
+    json_file = KNOWLEDGE_DIR / source_name / "articles.json"
+
+    if not json_file.exists():
+        return {"success": True, "data": {}}
+
+    with open(json_file, "r", encoding="utf-8") as f:
+        articles = json.load(f)
+
+    if not isinstance(articles, list):
+        return {"success": True, "data": {}}
+
+    # 3. 统计每个分类名出现的次数
+    count_map = {}
+
+    for item in articles:
+        if not isinstance(item, dict):
+            continue
+        if item.get("type") != "article":
+            continue
+        if not item.get("article") or not item.get("content"):
+            continue
+
+        types = item.get("dept_type_name")
+
+        if isinstance(types, str):
+            types = [t.strip() for t in types.split(",") if t.strip()]
+
+        if not isinstance(types, list):
+            continue
+
+        for t in types:
+            t = str(t).strip()
+            if t:
+                count_map[t] = count_map.get(t, 0) + 1
+
+    return {"success": True, "data": count_map}
+
+
         
 # ============================================================
 # 29. 读取最新题库（只读历史题库，排除 _new.json）

@@ -14,7 +14,6 @@ const AIQuestion = {
 
     // =====================================================
     // ✅ 当前使用的 PDF 名称
-    // （从 localStorage 读取，仅用于展示）
     // =====================================================
     currentPDFName: "",
 
@@ -48,6 +47,9 @@ const AIQuestion = {
 
         // ✅ 加载当前使用的 PDF
         this.loadCurrentPDF();
+
+        // ✅ 加载当前 PDF 下各分类的法条数量
+        await this.loadDeptTagCount();
 
         // 加载上次生成的题目（从 _new.json）
         await this.loadNewQuestions();
@@ -146,10 +148,61 @@ const AIQuestion = {
 
 
     // =====================================================
-    // ✅ 加载当前使用的 PDF（只读展示）
+    // ✅ 加载当前 PDF 下各分类的法条数量
     //
-    // 数据来源：localStorage.currentPDFName
-    // 由知识库页面写入
+    // 用于在下拉框里标记“暂无对应法条”的分类
+    // =====================================================
+    async loadDeptTagCount() {
+
+        try {
+            const pdfName = localStorage.getItem('currentPDFName') || '';
+
+            const url = pdfName
+                ? `/api/dept/tag-count?source=${encodeURIComponent(pdfName)}&t=${Date.now()}`
+                : `/api/dept/tag-count?t=${Date.now()}`;
+
+            const res = await fetch(url, { method: "GET", cache: "no-store" });
+            const result = await res.json();
+
+            if (!result.success || !result.data) return;
+
+            const countMap = result.data; // { "安全": 12, "安监科": 0, ... }
+
+            const select = document.getElementById("ai-dept-select");
+            if (!select) return;
+
+            for (const option of select.options) {
+
+                if (!option.value) continue; // 跳过“全部工种”
+
+                // ✅ 和后端一致：只取全路径的最后一段
+                const fullName = option.dataset.fullName || option.textContent.trim();
+                const nodeName = fullName.split('/').pop().trim();
+
+                const count = Number(countMap[nodeName]) || 0;
+                const hasArticles = count > 0;
+
+                // 去掉旧提示
+                const rawName = option.textContent.replace('（暂无对应法条）', '');
+
+                option.textContent = hasArticles
+                    ? rawName
+                    : rawName + '（暂无对应法条）';
+
+                option.disabled = !hasArticles;
+                option.style.color = hasArticles ? '' : '#94a3b8';
+
+                option.dataset.articleCount = count;
+            }
+
+        } catch (e) {
+            console.error("加载分类法条统计失败：", e);
+        }
+    },
+
+
+    // =====================================================
+    // ✅ 加载当前使用的 PDF（只读展示）
     // =====================================================
     loadCurrentPDF() {
 
@@ -200,26 +253,27 @@ const AIQuestion = {
                 "current-pdf-name"
             );
 
-        if (!el) {
-            return;
-        }
-
         const pdfName =
             event.newValue || "";
 
         this.currentPDFName =
             pdfName;
 
-        el.textContent =
-            pdfName || "未选择";
+        if (el) {
+            el.textContent =
+                pdfName || "未选择";
 
-        el.title =
-            pdfName || "未选择";
+            el.title =
+                pdfName || "未选择";
+        }
 
         console.log(
             "检测到 PDF 变化：",
             pdfName || "未选择"
         );
+
+        // ✅ 切换 PDF 后重新加载分类法条统计
+        this.loadDeptTagCount();
     },
 
 
@@ -963,6 +1017,21 @@ const AIQuestion = {
         };
 
 
+        // =================================================
+        // ✅ 二次校验：该分类在当前 PDF 下是否有法条
+        // =================================================
+        const deptArticleCount = Number(selectedOption?.dataset.articleCount) || 0;
+
+        if (selectedOption && selectedOption.value && deptArticleCount === 0) {
+            alert(
+                "该分类在当前法规库下暂无对应法条，无法出题。\n" +
+                "请先到「法规知识库」给相关法条打上该分类标签，" +
+                "或切换到其他法规/分类。"
+            );
+            return;
+        }
+
+
         if (
             !count ||
             count < 1 ||
@@ -1651,16 +1720,9 @@ const AIQuestion = {
 
 // =========================================================
 // ✅ 跳转到「法规知识库」页面（tab 切换）
-//
-// 你项目里左侧菜单是用 data-page 标识页面的：
-//   <div class="menu-item" data-page="knowledge">法规知识库</div>
-//
-// 所以这里直接模拟点击那一项，
-// 就能触发项目里完整的页面切换逻辑。
 // =========================================================
 function goKnowledge() {
 
-    // 方式1：找左侧菜单里 data-page="knowledge" 的项，模拟点击
     const menuItem =
         document.querySelector(
             '.menu-item[data-page="knowledge"]'
@@ -1671,7 +1733,6 @@ function goKnowledge() {
         return;
     }
 
-    // 方式2：如果项目里有全局切换函数，也可以直接调用
     if (
         typeof window.App !== 'undefined' &&
         typeof window.App.switchPage === 'function'
@@ -1680,7 +1741,6 @@ function goKnowledge() {
         return;
     }
 
-    // 兜底
     alert('请从左侧菜单进入「法规知识库」');
 }
 
