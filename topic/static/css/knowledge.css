@@ -610,3 +610,146 @@
         justify-content: flex-start;
     }
 }
+
+/* =====================================================
+   任务进度浮层（打标签 / 更新知识库 共用）
+   —— 新增部分
+===================================================== */
+
+/* 遮罩层 */
+.task-progress-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9999;
+    animation: taskOverlayIn .2s ease;
+}
+
+@keyframes taskOverlayIn {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+/* 卡片 */
+.task-progress-card {
+    width: 440px;
+    max-width: 90vw;
+    background: #fff;
+    border-radius: 22px;
+    padding: 26px 30px 22px;
+    box-shadow: 0 20px 60px rgba(15, 23, 42, 0.25);
+    animation: taskCardIn .25s cubic-bezier(.2,.8,.3,1);
+}
+
+@keyframes taskCardIn {
+    from { transform: translateY(12px) scale(.96); opacity: 0; }
+    to   { transform: translateY(0) scale(1);      opacity: 1; }
+}
+
+/* 标题行 */
+.task-progress-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 16px;
+    font-weight: 700;
+    color: #0f172a;
+    margin-bottom: 18px;
+}
+
+.task-progress-title .task-title-icon {
+    margin-right: 6px;
+}
+
+/* 关闭按钮 */
+.task-progress-close {
+    background: none;
+    border: none;
+    font-size: 22px;
+    line-height: 1;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 0 4px;
+    transition: color .2s;
+}
+
+.task-progress-close:hover {
+    color: #0f172a;
+}
+
+/* 进度条 */
+.task-progress-bar-wrap {
+    width: 100%;
+    height: 10px;
+    background: #eef2f7;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.task-progress-bar {
+    height: 100%;
+    width: 0%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #2563eb, #60a5fa);
+    transition: width .35s ease;
+}
+
+/* 打标签主题（紫色） */
+.task-progress-overlay[data-theme="tag"] .task-progress-bar {
+    background: linear-gradient(90deg, #6c5ce7, #a29bfe);
+}
+
+/* 更新知识库主题（蓝色） */
+.task-progress-overlay[data-theme="update"] .task-progress-bar {
+    background: linear-gradient(90deg, #2563eb, #60a5fa);
+}
+
+/* 信息行：百分比 + 计数 */
+.task-progress-info {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+    color: #64748b;
+    margin-top: 10px;
+}
+
+.task-progress-info .task-progress-percent {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+/* 消息行 */
+.task-progress-message {
+    margin-top: 14px;
+    font-size: 13px;
+    color: #475569;
+    min-height: 18px;
+    line-height: 1.6;
+    word-break: break-all;
+}
+
+/* 完成状态 */
+.task-progress-card.is-done .task-progress-bar {
+    background: linear-gradient(90deg, #10b981, #34d399) !important;
+}
+
+/* 失败状态 */
+.task-progress-card.is-error .task-progress-bar {
+    background: linear-gradient(90deg, #ef4444, #f87171) !important;
+}
+
+/* 小屏 */
+@media (max-width: 480px) {
+    .task-progress-card {
+        padding: 22px 20px 18px;
+        border-radius: 18px;
+    }
+
+    .task-progress-title {
+        font-size: 15px;
+    }
+}

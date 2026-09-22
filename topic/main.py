@@ -1792,9 +1792,15 @@ def system_info():
 # POST /api/knowledge/update
 #
 # ============================================================
-
 from fastapi import Request
+import threading
 
+
+# ============================================================
+# 24. 更新法规知识库
+#
+# POST /api/knowledge/update
+# ============================================================
 
 @app.post("/api/knowledge/update")
 async def update_knowledge(request: Request):
@@ -1910,35 +1916,43 @@ async def update_knowledge(request: Request):
         print(f"当前选择的 PDF：{source_file}")
 
         # =================================================
-        # 5. 调用知识库构建程序
+        # 5. ⭐ 关键改动：异步启动 + 立即返回
         # =================================================
 
         print()
         print("=" * 60)
-        print("开始调用 build_knowledge")
+        print("开始调用 build_knowledge（后台线程）")
         print(f"指定 PDF：{source_file}")
         print("=" * 60)
 
         import build_knowledge
 
-        # ⭐⭐⭐ 关键：只更新当前选中的 PDF ⭐⭐⭐
-        build_knowledge.main(
-            source_file=source_file
-        )
+        # 先重置进度，避免前端读到旧状态
+        build_knowledge.update_progress = {
+            "total": 0,
+            "processed": 0,
+            "status": "running",
+            "message": f"准备更新 {source_file}",
+            "source_file": source_file,
+            "current_pdf": source_file
+        }
+
+        # ⭐ 后台线程跑，立即返回
+        threading.Thread(
+            target=build_knowledge.main,
+            kwargs={"source_file": source_file},
+            daemon=True
+        ).start()
+
+        print(f"✅ 已启动后台线程：{source_file}")
 
         # =================================================
-        # 6. 更新完成
+        # 6. 立即返回（不等任务跑完）
         # =================================================
-
-        print()
-        print("=" * 60)
-        print(f"PDF [{source_file}] 更新完成")
-        print("=" * 60)
-        print()
 
         return {
             "success": True,
-            "message": f"《{source_file}》更新完成",
+            "message": f"《{source_file}》更新任务已启动",
             "source_file": source_file
         }
 
@@ -1986,6 +2000,27 @@ async def update_knowledge(request: Request):
         return {
             "success": False,
             "message": f"更新失败：{str(e)}"
+        }
+
+
+# ============================================================
+# ⭐ 新增：更新知识库进度
+#
+# GET /api/knowledge/update/progress
+# ============================================================
+
+@app.get("/api/knowledge/update/progress")
+async def update_knowledge_progress():
+    """返回 build_knowledge 的实时进度"""
+    try:
+        import build_knowledge
+        return build_knowledge.update_progress
+    except Exception as e:
+        return {
+            "total": 0,
+            "processed": 0,
+            "status": "error",
+            "message": str(e)
         }
 
 
@@ -2091,8 +2126,6 @@ def get_knowledge_data(source: str = None):
             "data": []
         }
 
-
-
 # ============================================================
 # 26. 获取法规知识库统计
 #
@@ -2107,10 +2140,10 @@ def get_knowledge_statistics(
     
     user = request.session.get("user")
 
-    print("当前用户:", user.get("user_name"))
-    print("当前部门:", user.get("subjection_name"))
-    print("当前矿井ID:", user.get("register_dept_id"))
-    print("当前矿井:", user.get("register_dept_name"))
+    # print("当前用户:", user.get("user_name"))
+    # print("当前部门:", user.get("subjection_name"))
+    # print("当前矿井ID:", user.get("register_dept_id"))
+    # print("当前矿井:", user.get("register_dept_name"))
     try:
         total = 0
         sources = []
@@ -4197,62 +4230,50 @@ async def tag_articles_api(request: Request):
         )
 
         # =====================================================
-        # 3. 调用 tag_articles
+        # 3. ⭐ 关键改动：异步启动 + 立即返回
         # =====================================================
 
         print()
         print("=" * 60)
-        print("开始调用 tag_articles")
+        print("开始调用 tag_articles（后台线程）")
         print(
             f"指定 PDF：{source_file}"
         )
         print("=" * 60)
 
         import tag_articles
+        import threading
 
-        result = tag_articles.main(
-            source_file=source_file
-        )
+        # 先重置进度，避免前端读到旧状态
+        tag_articles.tag_progress = {
+            "total": 0,
+            "processed": 0,
+            "status": "running",
+            "message": f"准备给 {source_file} 打标签",
+            "source_file": source_file,
+            "current_article": ""
+        }
 
-        # =====================================================
-        # 4. 判断执行结果
-        # =====================================================
+        # ⭐ 后台线程跑，立即返回
+        threading.Thread(
+            target=tag_articles.main,
+            kwargs={"source_file": source_file},
+            daemon=True
+        ).start()
 
-        if result is False:
-
-            print()
-            print(
-                f"❌ PDF [{source_file}] "
-                f"打标签失败"
-            )
-
-            return {
-                "success": False,
-                "message": (
-                    f"《{source_file}》"
-                    "打标签失败"
-                ),
-                "source_file": source_file
-            }
-
-        # =====================================================
-        # 5. 成功
-        # =====================================================
-
-        print()
-        print("=" * 60)
         print(
-            f"✅ PDF [{source_file}] "
-            f"打标签完成"
+            f"✅ 已启动后台线程：{source_file}"
         )
-        print("=" * 60)
-        print()
+
+        # =====================================================
+        # 4. ⭐ 立即返回（不等任务跑完）
+        # =====================================================
 
         return {
             "success": True,
             "message": (
                 f"《{source_file}》"
-                "打标签完成"
+                "打标签任务已启动"
             ),
             "source_file": source_file
         }
@@ -4300,7 +4321,27 @@ async def tag_articles_api(request: Request):
             "message": f"打标签失败：{e}"
         }
 
-        
+
+# ============================================================
+# ⭐ 新增：打标签进度接口
+#
+# GET /api/tag/progress
+# ============================================================
+
+@app.get("/api/tag/progress")
+async def tag_progress_api():
+    """返回 tag_articles 的实时进度"""
+    try:
+        import tag_articles
+        return tag_articles.tag_progress
+    except Exception as e:
+        return {
+            "total": 0,
+            "processed": 0,
+            "status": "error",
+            "message": str(e)
+        }
+
 # ============================================================
 # 36. 删除新题（通过ID精确删除，同时从历史题库中移除）
 #

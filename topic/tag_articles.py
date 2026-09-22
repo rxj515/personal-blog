@@ -100,7 +100,9 @@ tag_progress = {
     "total": 0,
     "processed": 0,
     "status": "idle",
-    "message": ""
+    "message": "",
+    "source_file": "",
+    "current_article": ""
 }
 
 
@@ -431,6 +433,11 @@ def process_long_article(idx, item):
 # ============================================================
 
 def process_single_knowledge(json_path, knowledge_name):
+    """
+    ⭐ 内部会更新全局 tag_progress
+    """
+    global tag_progress
+
     print()
     print("=" * 60)
     print(f"📄 处理知识库：{knowledge_name}")
@@ -480,6 +487,13 @@ def process_single_knowledge(json_path, knowledge_name):
 
         for idx in long_indices:
             try:
+                # ⭐ 更新当前处理的条文
+                tag_progress["current_article"] = articles[idx].get("article", "")
+                tag_progress["message"] = (
+                    f"[{knowledge_name}] 长条文："
+                    f"{articles[idx].get('article', '')}"
+                )
+
                 tags = process_long_article(idx, articles[idx])
 
                 # ✅ 直接写入树节点（不再有 dept_category）
@@ -487,6 +501,12 @@ def process_single_knowledge(json_path, knowledge_name):
                 articles[idx]["dept_type_name_str"] = ",".join(tags)
 
                 processed_count += 1
+
+                # ⭐ 更新全局进度
+                tag_progress["processed"] = (
+                    tag_progress.get("processed", 0) + 1
+                )
+
                 print(f"   ✅ 已完成 {processed_count}/{total_articles} 条")
 
                 with open(json_path, "w", encoding="utf-8") as f:
@@ -496,6 +516,11 @@ def process_single_knowledge(json_path, knowledge_name):
                 print(f"   ❌ 长条文 {articles[idx].get('article', '')} 处理失败：{e}")
                 articles[idx]["dept_type_name"] = ["鑫隆煤业"]
                 articles[idx]["dept_type_name_str"] = "鑫隆煤业"
+
+                # ⭐ 失败也要推进进度
+                tag_progress["processed"] = (
+                    tag_progress.get("processed", 0) + 1
+                )
 
         # -----------------------------------------------------
         # 再处理短条文（批量）
@@ -516,6 +541,12 @@ def process_single_knowledge(json_path, knowledge_name):
                     segments = [item.get("content", "")]
                     batch_data.append((i, idx, item, segments))
 
+                # ⭐ 更新当前批次信息
+                tag_progress["message"] = (
+                    f"[{knowledge_name}] 短条文批次 "
+                    f"{batch_idx + 1}/{len(batches)}"
+                )
+
                 prompt = build_prompt_for_batch(batch_data)
                 result = ai_call(prompt)
                 results = parse_ai_response_for_batch(result, batch_data)
@@ -529,12 +560,23 @@ def process_single_knowledge(json_path, knowledge_name):
                     json.dump(articles, f, ensure_ascii=False, indent=2)
 
                 processed_count += len(batch_indices)
+
+                # ⭐ 更新全局进度
+                tag_progress["processed"] = (
+                    tag_progress.get("processed", 0) + len(batch_indices)
+                )
+
                 print(f"   ✅ 已完成 {processed_count}/{total_articles} 条")
 
                 time.sleep(0.5)
 
             except Exception as e:
                 print(f"   ❌ 批次 {batch_idx + 1} 处理失败：{e}")
+
+                # ⭐ 失败也要推进进度，否则会卡住
+                tag_progress["processed"] = (
+                    tag_progress.get("processed", 0) + len(batch_indices)
+                )
 
         # -----------------------------------------------------
         # 最终校验
@@ -586,6 +628,7 @@ def process_single_knowledge(json_path, knowledge_name):
         traceback.print_exc()
         return {"success": False, "count": 0}
 
+
 # ============================================================
 # 9. 主函数
 # ============================================================
@@ -608,7 +651,9 @@ def main(source_file=None):
         "total": 0,
         "processed": 0,
         "status": "running",
-        "message": "开始打标签..."
+        "message": "开始打标签...",
+        "source_file": source_file or "",
+        "current_article": ""
     }
 
     print()
@@ -882,11 +927,28 @@ def main(source_file=None):
                 "error": "没有找到需要处理的知识库"
             }
 
+        # ⭐ 新增：统计所有知识库需要打标签的总条数
+        total_articles_all = 0
+        for json_file, _ in knowledge_files:
+            try:
+                with open(json_file, "r", encoding="utf-8") as f:
+                    arr = json.load(f)
+                if isinstance(arr, list):
+                    for it in arr:
+                        if it.get("type") in ("article", "guide"):
+                            total_articles_all += 1
+            except Exception:
+                pass
+
+        tag_progress["total"] = total_articles_all
+        tag_progress["processed"] = 0
+
         print()
         print(
             f"本次准备处理 "
             f"{len(knowledge_files)} 个知识库"
         )
+        print(f"总法条数：{total_articles_all}")
 
         for index, (
             json_file,
@@ -908,10 +970,6 @@ def main(source_file=None):
         total_processed = 0
         total_success = 0
         total_failed = 0
-
-        tag_progress["total"] = (
-            len(knowledge_files)
-        )
 
         for index, (
             json_file,
@@ -982,17 +1040,6 @@ def main(source_file=None):
 
                 traceback.print_exc()
 
-            # 更新进度
-
-            tag_progress["processed"] = (
-                index
-            )
-
-            tag_progress["message"] = (
-                f"正在处理："
-                f"{knowledge_name}"
-            )
-
         # ====================================================
         # 6. 最终结果
         # ====================================================
@@ -1031,11 +1078,9 @@ def main(source_file=None):
 
         print("=" * 60)
 
+        # ⭐ 标记完成
         tag_progress["status"] = "done"
-
-        tag_progress["processed"] = (
-            total_processed
-        )
+        tag_progress["processed"] = tag_progress.get("total", total_processed)
 
         if source_file:
 

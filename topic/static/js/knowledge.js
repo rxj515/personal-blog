@@ -21,26 +21,162 @@ window.Knowledge = (function () {
 
 
     // =====================================================
-    // 初始化
+    // 进度浮层控制器（打标签 / 更新知识库 共用）
     // =====================================================
 
+    /**
+     * 创建一个进度浮层控制器
+     * @param {Object} cfg
+     *   cfg.overlayId  遮罩层 id
+     *   cfg.cardId     卡片 id
+     *   cfg.barId      进度条 id
+     *   cfg.percentId  百分比文字 id
+     *   cfg.countId    计数文字 id
+     *   cfg.messageId  消息文字 id
+     *   cfg.closeId    关闭按钮 id
+     *   cfg.progressUrl 轮询接口
+     */
+    function createTaskProgress(cfg) {
+        let timer = null;
+
+        const overlay   = document.getElementById(cfg.overlayId);
+        const card      = document.getElementById(cfg.cardId);
+        const bar       = document.getElementById(cfg.barId);
+        const percentEl = document.getElementById(cfg.percentId);
+        const countEl   = document.getElementById(cfg.countId);
+        const msgEl     = document.getElementById(cfg.messageId);
+        const closeBtn  = document.getElementById(cfg.closeId);
+
+        function show() {
+            if (!overlay) return;
+            overlay.style.display = 'flex';
+            if (card) card.className = 'task-progress-card';
+            if (bar) bar.style.width = '0%';
+            if (percentEl) percentEl.textContent = '0%';
+            if (countEl) countEl.textContent = '0 / 0';
+            if (msgEl) msgEl.textContent = '准备中...';
+            if (closeBtn) closeBtn.style.display = 'none';
+        }
+
+        function hide() {
+            if (overlay) overlay.style.display = 'none';
+        }
+
+        function update(data) {
+            if (!data) return;
+
+            const total     = Number(data.total) || 0;
+            const processed = Number(data.processed) || 0;
+            const percent   = total > 0
+                ? Math.min(100, Math.round((processed / total) * 100))
+                : 0;
+
+            if (bar) bar.style.width = percent + '%';
+            if (percentEl) percentEl.textContent = percent + '%';
+            if (countEl) countEl.textContent = processed + ' / ' + total;
+            if (msgEl) msgEl.textContent = data.message || '处理中...';
+
+            if (data.status === 'done') {
+                if (card) card.classList.add('is-done');
+                if (bar) bar.style.width = '100%';
+                if (percentEl) percentEl.textContent = '100%';
+                stopPolling();
+                if (closeBtn) closeBtn.style.display = 'block';
+
+                // 3 秒后自动关闭
+                setTimeout(function () {
+                    hide();
+                }, 3000);
+            }
+
+            if (data.status === 'error') {
+                if (card) card.classList.add('is-error');
+                stopPolling();
+                if (closeBtn) closeBtn.style.display = 'block';
+            }
+        }
+
+        function stopPolling() {
+            if (timer) {
+                clearInterval(timer);
+                timer = null;
+            }
+        }
+
+        function startPolling() {
+            stopPolling();
+
+            const poll = function () {
+                fetch(cfg.progressUrl)
+                    .then(function (res) { return res.json(); })
+                    .then(function (data) { update(data); })
+                    .catch(function (e) {
+                        console.error('读取进度失败：', e);
+                    });
+            };
+
+            poll(); // 立即拉一次
+            timer = setInterval(poll, 1000); // 每秒一次
+        }
+
+        if (closeBtn) {
+            closeBtn.addEventListener('click', hide);
+        }
+
+        return {
+            show: show,
+            hide: hide,
+            update: update,
+            startPolling: startPolling,
+            stopPolling: stopPolling
+        };
+    }
+
+    // 打标签进度浮层
+    const tagProgress = createTaskProgress({
+        overlayId:   'tagProgressOverlay',
+        cardId:      'tagProgressCard',
+        barId:       'tagProgressBar',
+        percentId:   'tagProgressPercent',
+        countId:     'tagProgressCount',
+        messageId:   'tagProgressMessage',
+        closeId:     'tagProgressClose',
+        progressUrl: '/api/tag/progress'
+    });
+
+    // 更新知识库进度浮层
+    const updateProgress = createTaskProgress({
+        overlayId:   'updateProgressOverlay',
+        cardId:      'updateProgressCard',
+        barId:       'updateProgressBar',
+        percentId:   'updateProgressPercent',
+        countId:     'updateProgressCount',
+        messageId:   'updateProgressMessage',
+        closeId:     'updateProgressClose',
+        progressUrl: '/api/knowledge/update/progress'
+    });
+
+
+    // =====================================================
+    // 初始化
+    // =====================================================
 
     async function init() {
         console.log('=================================');
         console.log('Knowledge 初始化开始');
         console.log('=================================');
-    
+
         bindEvents();
-        
+
         // ✅ 先加载当前 PDF
         await loadCurrentPDF();
-        
+
         // ✅ 再加载 PDF 列表
         await loadPDFList();
-        
+
         // ✅ 最后加载知识库（会根据当前 PDF 加载对应数据）
         await loadKnowledge();
-    
+
         console.log('Knowledge 初始化完成');
     }
 
@@ -241,10 +377,10 @@ window.Knowledge = (function () {
             if (result.success) {
                 document.getElementById('current-pdf-name').textContent = filename;
                 showToast('✅ 已切换到：' + filename, 'success');
-                
+
                 // ✅ 重新加载知识库（会根据当前选中的 PDF 加载对应数据）
                 await loadKnowledge();
-                
+
                 // 刷新列表
                 await loadPDFList();
             } else {
@@ -273,10 +409,10 @@ window.Knowledge = (function () {
 
             if (result.success) {
                 showToast('✅ ' + result.message, 'success');
-                
+
                 // 刷新 PDF 列表
                 await loadPDFList();
-                
+
                 // 如果当前使用的是被删除的文件，重置显示
                 const current = document.getElementById('current-pdf-name');
                 if (current && current.textContent === filename) {
@@ -293,7 +429,7 @@ window.Knowledge = (function () {
         }
     }
 
-    
+
     // =====================================================
     // ✅ 新增：上传 PDF
     // =====================================================
@@ -360,75 +496,71 @@ window.Knowledge = (function () {
     // 加载知识库
     // =====================================================
 
- // =====================================================
-// 加载知识库
-// =====================================================
-
-async function loadKnowledge() {
-    const list = document.getElementById('knowledge-list');
-    if (!list) {
-        console.error('找不到 #knowledge-list');
-        return;
-    }
-
-    list.innerHTML = `
-        <div class="list-loading">
-            正在读取法规知识库...
-        </div>
-    `;
-
-    try {
-
-        // 获取当前选中的 PDF 名称
-        const currentPdfElement = document.getElementById('current-pdf-name');
-        let currentPdfName = '';
-        if (currentPdfElement) {
-            currentPdfName = currentPdfElement.textContent.trim();
-            // ✅ 去掉 .pdf 后缀，匹配目录名
-            if (currentPdfName.endsWith('.pdf')) {
-                currentPdfName = currentPdfName.slice(0, -4);
-            }
+    async function loadKnowledge() {
+        const list = document.getElementById('knowledge-list');
+        if (!list) {
+            console.error('找不到 #knowledge-list');
+            return;
         }
 
-
-        // ✅ 如果当前有选中的 PDF（不是"未选择"），就传 source 参数
-        let source = '';
-        if (currentPdfName && currentPdfName !== '未选择') {
-            source = currentPdfName;
-        }
-
-        console.log('当前选中的 PDF：', source);
-
-        // ✅ 调用 API 时带上 source 参数
-        const url = source ? `/api/knowledge/data?source=${encodeURIComponent(source)}` : '/api/knowledge/data';
-        const result = await window.AppAPI.get(url);
-
-        console.log('知识库接口返回：', result);
-
-        if (!result.success) {
-            throw new Error(result.message || '读取知识库失败');
-        }
-
-        knowledgeData = Array.isArray(result.data) ? result.data : [];
-        console.log('知识库实际数量：', knowledgeData.length);
-
-        filteredData = [...knowledgeData];
-        currentPage = 1;
-
-        buildFilter();
-        renderList();
-
-    } catch (error) {
-        console.error('知识库读取失败：', error);
         list.innerHTML = `
-            <div class="empty-state">
-                <div class="empty-icon">!</div>
-                <div class="empty-title">知识库读取失败</div>
-                <div class="empty-text">${escapeHtml(error.message)}</div>
+            <div class="list-loading">
+                正在读取法规知识库...
             </div>
         `;
+
+        try {
+
+            // 获取当前选中的 PDF 名称
+            const currentPdfElement = document.getElementById('current-pdf-name');
+            let currentPdfName = '';
+            if (currentPdfElement) {
+                currentPdfName = currentPdfElement.textContent.trim();
+                // ✅ 去掉 .pdf 后缀，匹配目录名
+                if (currentPdfName.endsWith('.pdf')) {
+                    currentPdfName = currentPdfName.slice(0, -4);
+                }
+            }
+
+
+            // ✅ 如果当前有选中的 PDF（不是"未选择"），就传 source 参数
+            let source = '';
+            if (currentPdfName && currentPdfName !== '未选择') {
+                source = currentPdfName;
+            }
+
+            console.log('当前选中的 PDF：', source);
+
+            // ✅ 调用 API 时带上 source 参数
+            const url = source ? `/api/knowledge/data?source=${encodeURIComponent(source)}` : '/api/knowledge/data';
+            const result = await window.AppAPI.get(url);
+
+            console.log('知识库接口返回：', result);
+
+            if (!result.success) {
+                throw new Error(result.message || '读取知识库失败');
+            }
+
+            knowledgeData = Array.isArray(result.data) ? result.data : [];
+            console.log('知识库实际数量：', knowledgeData.length);
+
+            filteredData = [...knowledgeData];
+            currentPage = 1;
+
+            buildFilter();
+            renderList();
+
+        } catch (error) {
+            console.error('知识库读取失败：', error);
+            list.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">!</div>
+                    <div class="empty-title">知识库读取失败</div>
+                    <div class="empty-text">${escapeHtml(error.message)}</div>
+                </div>
+            `;
+        }
     }
-}
 
     // =====================================================
     // 创建章节/条款筛选
@@ -1157,18 +1289,22 @@ async function loadKnowledge() {
         }
 
         // =================================================
-        // 3. 保存按钮原来的文字
+        // 3. 显示进度浮层 + 启动轮询
         // =================================================
-        const oldText =
-            button.textContent;
+        updateProgress.show();
+        updateProgress.startPolling();
 
+        // =================================================
+        // 4. 保存按钮文字 + 禁用
+        // =================================================
+        const oldText = button.textContent;
         button.disabled = true;
         button.textContent = '更新中...';
 
         try {
 
             // =================================================
-            // 4. 把当前 PDF 文件名传给后端
+            // 5. 调用更新接口（后端异步启动，立即返回）
             // =================================================
             const result =
                 await window.AppAPI.post(
@@ -1184,37 +1320,32 @@ async function loadKnowledge() {
             );
 
             // =================================================
-            // 5. 判断更新结果
+            // 6. 接口返回失败 → 直接停止进度
             // =================================================
             if (!result.success) {
-                throw new Error(
-                    result.message ||
-                    '知识库更新失败'
-                );
+                updateProgress.stopPolling();
+                updateProgress.update({
+                    status: 'error',
+                    message: result.message || '知识库更新失败',
+                    total: 0,
+                    processed: 0
+                });
+                return;
             }
 
             // =================================================
-            // 6. 更新成功
+            // 7. 接口返回成功 → 交给轮询判断是否 done
+            //    轮询到 done 后会自动关闭浮层
+            //    这里额外监听一次，done 后刷新知识库
             // =================================================
-            showToast(
-                '✅ ' +
-                (result.message ||
-                    '知识库更新完成！'),
-                'success'
-            );
-
-            // =================================================
-            // 7. 重新读取当前 PDF 的知识库
-            // =================================================
-            await loadKnowledge();
-
-            // =================================================
-            // 8. 通知其他页面知识库已经更新
-            // =================================================
-            document.dispatchEvent(
-                new CustomEvent(
-                    'knowledgeUpdated'
-                )
+            waitProgressDone(
+                '/api/knowledge/update/progress',
+                function () {
+                    loadKnowledge();
+                    document.dispatchEvent(
+                        new CustomEvent('knowledgeUpdated')
+                    );
+                }
             );
 
         } catch (error) {
@@ -1224,16 +1355,18 @@ async function loadKnowledge() {
                 error
             );
 
-            showToast(
-                '❌ ' +
-                error.message,
-                'error'
-            );
+            updateProgress.stopPolling();
+            updateProgress.update({
+                status: 'error',
+                message: error.message,
+                total: 0,
+                processed: 0
+            });
 
         } finally {
 
             // =================================================
-            // 9. 恢复按钮
+            // 8. 恢复按钮
             // =================================================
             button.disabled = false;
             button.textContent = oldText;
@@ -1293,6 +1426,12 @@ async function loadKnowledge() {
                 ? button.textContent
                 : '';
 
+        // =================================================
+        // 4. 显示进度浮层 + 启动轮询
+        // =================================================
+        tagProgress.show();
+        tagProgress.startPolling();
+
         if (button) {
             button.disabled = true;
             button.textContent = '打标签中...';
@@ -1301,7 +1440,7 @@ async function loadKnowledge() {
         try {
 
             // =================================================
-            // 4. 把当前 PDF 传给后端
+            // 5. 调用打标签接口（后端异步启动，立即返回）
             // =================================================
             const result =
                 await window.AppAPI.post(
@@ -1317,39 +1456,30 @@ async function loadKnowledge() {
             );
 
             // =================================================
-            // 5. 判断结果
+            // 6. 失败 → 停止进度
             // =================================================
             if (!result.success) {
-                throw new Error(
-                    result.message ||
-                    '打标签失败'
-                );
+                tagProgress.stopPolling();
+                tagProgress.update({
+                    status: 'error',
+                    message: result.message || '打标签失败',
+                    total: 0,
+                    processed: 0
+                });
+                return;
             }
 
             // =================================================
-            // 6. 成功
+            // 7. 成功 → 等轮询到 done 后刷新知识库
             // =================================================
-            showToast(
-                '✅ ' +
-                (
-                    result.message ||
-                    '打标签完成！'
-                ),
-                'success'
-            );
-
-            // =================================================
-            // 7. 重新加载当前 PDF 的知识库
-            // =================================================
-            await loadKnowledge();
-
-            // =================================================
-            // 8. 通知其他地方知识库已更新
-            // =================================================
-            document.dispatchEvent(
-                new CustomEvent(
-                    'knowledgeUpdated'
-                )
+            waitProgressDone(
+                '/api/tag/progress',
+                function () {
+                    loadKnowledge();
+                    document.dispatchEvent(
+                        new CustomEvent('knowledgeUpdated')
+                    );
+                }
             );
 
         } catch (error) {
@@ -1359,11 +1489,13 @@ async function loadKnowledge() {
                 error
             );
 
-            showToast(
-                '❌ ' +
-                error.message,
-                'error'
-            );
+            tagProgress.stopPolling();
+            tagProgress.update({
+                status: 'error',
+                message: error.message,
+                total: 0,
+                processed: 0
+            });
 
         } finally {
 
@@ -1372,6 +1504,31 @@ async function loadKnowledge() {
                 button.textContent = oldText;
             }
         }
+    }
+
+
+    // =====================================================
+    // 等待进度完成（轮询到 done 后执行回调）
+    // =====================================================
+    function waitProgressDone(progressUrl, onDone) {
+        const timer = setInterval(function () {
+            fetch(progressUrl)
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    if (data && data.status === 'done') {
+                        clearInterval(timer);
+                        if (typeof onDone === 'function') {
+                            onDone();
+                        }
+                    }
+                    if (data && data.status === 'error') {
+                        clearInterval(timer);
+                    }
+                })
+                .catch(function () {
+                    clearInterval(timer);
+                });
+        }, 1500);
     }
 
 

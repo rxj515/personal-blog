@@ -42,6 +42,25 @@ MINERU_DIR = BASE_DIR / "data" / "mineru"
 
 
 # =========================================================
+# ⭐ 新增：全局进度（供 /api/knowledge/update/progress 读取）
+# =========================================================
+
+update_progress = {
+    "total": 0,
+    "processed": 0,
+    "status": "idle",       # idle | running | done | error
+    "message": "",
+    "source_file": "",
+    "current_pdf": "",
+}
+
+
+def get_progress():
+    """返回当前进度（供接口调用）"""
+    return update_progress
+
+
+# =========================================================
 # 2. MinerU 配置
 # =========================================================
 
@@ -608,6 +627,14 @@ def mineru_wait_result(batch_id):
         total_pages = progress.get("total_pages")
 
         elapsed_text = f"{int(elapsed) // 60:02d}:{int(elapsed) % 60:02d}"
+
+        # ⭐ 新增：把 MinerU 内部页数进度同步到全局 message
+        if extracted_pages is not None and total_pages is not None:
+            pct = int(extracted_pages / max(1, total_pages) * 100)
+            update_progress["message"] = (
+                f"[{update_progress.get('current_pdf', '')}] "
+                f"MinerU 解析 {extracted_pages}/{total_pages} 页 ({pct}%)"
+            )
 
         if state != last_state:
             if extracted_pages is not None and total_pages is not None:
@@ -1503,6 +1530,17 @@ def find_pdf_files():
 
 
 def main(source_file=None):
+    # ⭐ 新增：初始化全局进度
+    global update_progress
+    update_progress = {
+        "total": 0,
+        "processed": 0,
+        "status": "running",
+        "message": f"开始处理 {source_file or '全部'}",
+        "source_file": source_file or "",
+        "current_pdf": "",
+    }
+
     print("\n====================================")
     print("       通用法规知识库构建程序")
     print("       MinerU API 版（数组输出）")
@@ -1520,6 +1558,9 @@ def main(source_file=None):
         check_mineru_token()
     except Exception as e:
         print(f"\n❌ {e}")
+        # ⭐ 新增：标记错误
+        update_progress["status"] = "error"
+        update_progress["message"] = str(e)
         return False
 
     # =====================================================
@@ -1564,6 +1605,9 @@ def main(source_file=None):
             print("\nPDF目录：")
             print(PDF_DIR.resolve())
 
+            # ⭐ 新增：标记错误
+            update_progress["status"] = "error"
+            update_progress["message"] = f"PDF 不存在：{pdf_path.name}"
             return False
 
         # -------------------------------------------------
@@ -1572,6 +1616,10 @@ def main(source_file=None):
         if pdf_path.suffix.lower() != ".pdf":
             print("\n❌ 指定文件不是 PDF：")
             print(pdf_path)
+
+            # ⭐ 新增：标记错误
+            update_progress["status"] = "error"
+            update_progress["message"] = f"不是 PDF：{pdf_path.name}"
             return False
 
         # -------------------------------------------------
@@ -1599,6 +1647,9 @@ def main(source_file=None):
             print("\n请把法规 PDF 放到：")
             print(PDF_DIR.resolve())
 
+            # ⭐ 新增：标记错误
+            update_progress["status"] = "error"
+            update_progress["message"] = "没有找到 PDF"
             return False
 
         print(f"\n发现 {len(pdf_files)} 个 PDF：")
@@ -1619,6 +1670,10 @@ def main(source_file=None):
                 f"[{page_count}页]"
             )
 
+    # ⭐ 新增：设置总进度 = PDF 数量
+    update_progress["total"] = len(pdf_files)
+    update_progress["processed"] = 0
+
     # =====================================================
     # 开始处理 PDF
     # =====================================================
@@ -1638,6 +1693,10 @@ def main(source_file=None):
         print(pdf_path.name)
         print("====================================")
 
+        # ⭐ 新增：更新当前正在处理的 PDF
+        update_progress["current_pdf"] = pdf_path.name
+        update_progress["message"] = f"[{pdf_path.name}] 开始解析"
+
         try:
 
             # -------------------------------------------------
@@ -1655,6 +1714,9 @@ def main(source_file=None):
             print(
                 f"提取文本：{len(all_lines)} 行"
             )
+
+            # ⭐ 新增：更新阶段
+            update_progress["message"] = f"[{pdf_path.name}] 保存原始 TXT"
 
             # -------------------------------------------------
             # 2. 保存原始 TXT
@@ -1680,6 +1742,9 @@ def main(source_file=None):
             # -------------------------------------------------
             # 3. 判断文档类型
             # -------------------------------------------------
+
+            # ⭐ 新增：更新阶段
+            update_progress["message"] = f"[{pdf_path.name}] 判断文档类型"
 
             doc_type = detect_document_type(
                 markdown
@@ -1801,6 +1866,8 @@ def main(source_file=None):
 
                 failed_count += 1
 
+                # ⭐ 新增：跳过也要推进进度
+                update_progress["processed"] = index
                 continue
 
             # -------------------------------------------------
@@ -1815,11 +1882,16 @@ def main(source_file=None):
 
                 failed_count += 1
 
+                # ⭐ 新增：跳过也要推进进度
+                update_progress["processed"] = index
                 continue
 
             # -------------------------------------------------
             # 9. 保存 articles.json
             # -------------------------------------------------
+
+            # ⭐ 新增：更新阶段
+            update_progress["message"] = f"[{pdf_path.name}] 保存 JSON"
 
             save_articles_json(
                 pdf_path,
@@ -1851,6 +1923,9 @@ def main(source_file=None):
 
             traceback.print_exc()
 
+        # ⭐ 新增：每个 PDF 处理完（无论成功失败）推进进度
+        update_progress["processed"] = index
+
     # =====================================================
     # 处理结果
     # =====================================================
@@ -1876,6 +1951,11 @@ def main(source_file=None):
     )
 
     print("====================================")
+
+    # ⭐ 新增：标记完成
+    update_progress["status"] = "done"
+    update_progress["processed"] = update_progress["total"]
+    update_progress["message"] = f"✅ 完成，成功 {success_count} 个"
 
     # =====================================================
     # 返回结果
