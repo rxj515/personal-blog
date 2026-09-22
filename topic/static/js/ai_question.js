@@ -691,6 +691,44 @@ const AIQuestion = {
             );
         }
 
+
+        // =================================================
+        // ✅ 新增：题型变化提示
+        // =================================================
+        const typeSelect =
+            document.getElementById(
+                "question-type"
+            );
+
+        if (typeSelect) {
+
+            typeSelect.addEventListener(
+                "change",
+                function () {
+
+                    const msg =
+                        document.getElementById(
+                            "generate-message"
+                        );
+
+                    if (!msg) return;
+
+                    if (this.value === "混合") {
+
+                        msg.textContent =
+                            "混合题型：单选、多选、判断将按比例生成";
+
+                    } else {
+
+                        msg.textContent = "";
+
+                    }
+
+                }
+            );
+
+        }
+
     },
 
 
