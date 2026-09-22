@@ -2,9 +2,6 @@ const AIQuestion = {
 
     // =====================================================
     // 当前题目数据
-    //
-    // 这里只保存"本次AI生成"的题目
-    // 页面显示和Excel导出都使用这里的数据
     // =====================================================
     currentQuestions: [],
 
@@ -13,6 +10,13 @@ const AIQuestion = {
     // 当前AI配置
     // =====================================================
     currentAIConfig: null,
+
+
+    // =====================================================
+    // ✅ 当前使用的 PDF 名称
+    // （从 localStorage 读取，仅用于展示）
+    // =====================================================
+    currentPDFName: "",
 
 
     // =====================================================
@@ -39,8 +43,11 @@ const AIQuestion = {
         // 读取当前系统AI配置
         await this.loadAIConfig();
 
-        // ✅ 新增：加载分类（工种）下拉框
+        // ✅ 加载分类（工种）下拉框
         await this.loadAiDeptList();
+
+        // ✅ 加载当前使用的 PDF
+        this.loadCurrentPDF();
 
         // 加载上次生成的题目（从 _new.json）
         await this.loadNewQuestions();
@@ -48,7 +55,7 @@ const AIQuestion = {
         // 绑定按钮
         this.bindEvent();
 
-        // ✅ 新增：绑定删除事件（独立）
+        // ✅ 绑定删除事件（独立）
         this.bindDeleteEvents();
 
         // ✅ 监听 AI 配置变化事件
@@ -65,11 +72,25 @@ const AIQuestion = {
             this._handleConfigChange
         );
 
+        // ✅ 监听当前 PDF 变化（跨页面同步）
+        window.removeEventListener(
+            "storage",
+            this._handlePDFChange
+        );
+
+        this._handlePDFChange =
+            this._handlePDFChange.bind(this);
+
+        window.addEventListener(
+            "storage",
+            this._handlePDFChange
+        );
+
     },
 
 
     // =====================================================
-    // ✅ 新增：加载分类（工种）下拉框
+    // ✅ 加载分类（工种）下拉框
     // =====================================================
     async loadAiDeptList() {
 
@@ -124,7 +145,84 @@ const AIQuestion = {
     },
 
 
-    
+    // =====================================================
+    // ✅ 加载当前使用的 PDF（只读展示）
+    //
+    // 数据来源：localStorage.currentPDFName
+    // 由知识库页面写入
+    // =====================================================
+    loadCurrentPDF() {
+
+        const el =
+            document.getElementById(
+                "current-pdf-name"
+            );
+
+        if (!el) {
+            return;
+        }
+
+        const pdfName =
+            localStorage.getItem(
+                "currentPDFName"
+            ) || "";
+
+        this.currentPDFName =
+            pdfName;
+
+        el.textContent =
+            pdfName || "未选择";
+
+        el.title =
+            pdfName || "未选择";
+
+        console.log(
+            "当前使用的 PDF：",
+            pdfName || "未选择"
+        );
+    },
+
+
+    // =====================================================
+    // ✅ 处理跨页面 PDF 变化
+    // =====================================================
+    _handlePDFChange(event) {
+
+        if (
+            !event ||
+            event.key !== "currentPDFName"
+        ) {
+            return;
+        }
+
+        const el =
+            document.getElementById(
+                "current-pdf-name"
+            );
+
+        if (!el) {
+            return;
+        }
+
+        const pdfName =
+            event.newValue || "";
+
+        this.currentPDFName =
+            pdfName;
+
+        el.textContent =
+            pdfName || "未选择";
+
+        el.title =
+            pdfName || "未选择";
+
+        console.log(
+            "检测到 PDF 变化：",
+            pdfName || "未选择"
+        );
+    },
+
+
     // =====================================================
     // 处理配置变化事件
     // =====================================================
@@ -236,12 +334,6 @@ const AIQuestion = {
 
     // =====================================================
     // 读取当前AI模型配置
-    //
-    // 使用后端已经存在的接口：
-    //
-    // GET /api/system/ai/config
-    //
-    // 不再直接读取 aiconfig.json
     // =====================================================
     async loadAIConfig() {
 
@@ -266,9 +358,6 @@ const AIQuestion = {
             );
 
 
-            // =================================================
-            // 调用现有后端接口
-            // =================================================
             const response =
                 await fetch(
                     "/api/system/ai/config?t=" +
@@ -280,9 +369,6 @@ const AIQuestion = {
                 );
 
 
-            // =================================================
-            // HTTP错误
-            // =================================================
             if (!response.ok) {
 
                 throw new Error(
@@ -292,9 +378,6 @@ const AIQuestion = {
             }
 
 
-            // =================================================
-            // 读取JSON
-            // =================================================
             const result =
                 await response.json();
 
@@ -312,10 +395,6 @@ const AIQuestion = {
                 "================================"
             );
 
-
-            // =================================================
-            // 兼容不同返回结构
-            // =================================================
 
             let config = null;
 
@@ -373,32 +452,20 @@ const AIQuestion = {
             }
 
 
-            // =================================================
-            // 保存配置
-            // =================================================
             this.currentAIConfig =
                 config;
 
 
-            // =================================================
-            // ✅ 获取显示名称（改进版）
-            // =================================================
             const displayName =
                 this.getAIModelDisplayName(
                     config
                 );
 
 
-            // =================================================
-            // 页面显示
-            // =================================================
             modelElement.textContent =
                 displayName;
 
 
-            // =================================================
-            // 保存真实模型名称
-            // =================================================
             modelElement.dataset.model =
                 config.model;
 
@@ -407,9 +474,6 @@ const AIQuestion = {
                 config.provider || "";
 
 
-            // =================================================
-            // 状态样式
-            // =================================================
             modelElement.classList.remove(
                 "model-error"
             );
@@ -425,12 +489,10 @@ const AIQuestion = {
                 displayName
             );
 
-
             console.log(
                 "Provider：",
                 config.provider
             );
-
 
             console.log(
                 "Model：",
@@ -457,9 +519,6 @@ const AIQuestion = {
             );
 
 
-            // =================================================
-            // 页面显示错误
-            // =================================================
             modelElement.textContent =
                 "读取模型失败";
 
@@ -484,7 +543,7 @@ const AIQuestion = {
 
 
     // =====================================================
-    // ✅ AI模型显示名称（改进版）
+    // ✅ AI模型显示名称
     // =====================================================
     getAIModelDisplayName(config) {
 
@@ -501,7 +560,6 @@ const AIQuestion = {
             )
             .trim();
 
-        // 显示名称映射
         const providerNames = {
             ollama: "Ollama",
             deepseek: "DeepSeek",
@@ -514,9 +572,6 @@ const AIQuestion = {
         const displayProvider =
             providerNames[provider] || provider;
 
-        // =================================================
-        // 如果有 provider 和 model
-        // =================================================
         if (
             provider &&
             model
@@ -525,9 +580,6 @@ const AIQuestion = {
             return displayProvider + " - " + model;
         }
 
-        // =================================================
-        // 只有模型
-        // =================================================
         if (model) {
 
             return model;
@@ -542,9 +594,6 @@ const AIQuestion = {
     // =====================================================
     bindEvent() {
 
-        // =================================================
-        // AI出题按钮
-        // =================================================
         const btn =
             document.getElementById(
                 "generate-btn"
@@ -567,9 +616,6 @@ const AIQuestion = {
         }
 
 
-        // =================================================
-        // Excel导出按钮
-        // =================================================
         const exportBtn =
             document.getElementById(
                 "export-btn"
@@ -595,7 +641,7 @@ const AIQuestion = {
 
 
     // =====================================================
-    // ✅ 新增：绑定删除事件（独立方法，防止重复绑定）
+    // ✅ 绑定删除事件
     // =====================================================
     bindDeleteEvents() {
 
@@ -608,7 +654,6 @@ const AIQuestion = {
             return;
         }
 
-        // 移除旧监听器
         if (this._deleteHandler) {
             tbody.removeEventListener(
                 "click",
@@ -617,7 +662,6 @@ const AIQuestion = {
             this._deleteHandler = null;
         }
 
-        // 创建新监听器
         this._deleteHandler = (e) => {
             const deleteBtn =
                 e.target.closest(".btn-delete-row");
@@ -627,17 +671,13 @@ const AIQuestion = {
                     deleteBtn.closest("tr");
 
                 if (row) {
-                    // ✅ 获取存储的ID
                     const questionId =
                         row.dataset.id;
 
                     if (questionId) {
-                        // 阻止事件冒泡
                         e.stopPropagation();
-                        // ✅ 通过ID删除
                         this.deleteQuestionById(questionId);
                     } else {
-                        // 兼容旧数据：如果没有ID，使用索引
                         const index =
                             parseInt(
                                 row.dataset.index
@@ -670,7 +710,6 @@ const AIQuestion = {
             return;
         }
 
-        // 查找题目
         const question = this.currentQuestions.find(q => q.id === questionId);
         if (!question) {
             console.warn("删除失败：未找到ID为", questionId, "的题目");
@@ -688,9 +727,6 @@ const AIQuestion = {
             return;
         }
 
-        // =================================================
-        // ✅ 调用后端接口删除（通过ID）
-        // =================================================
         try {
             const response = await fetch(
                 "/api/questions/delete-new",
@@ -710,15 +746,10 @@ const AIQuestion = {
                 return;
             }
 
-            // =================================================
-            // 从数组中移除（通过ID过滤）
-            // =================================================
             this.currentQuestions = this.currentQuestions.filter(q => q.id !== questionId);
 
-            // 重新渲染
             this.render(this.currentQuestions);
 
-            // 更新消息
             const message =
                 document.getElementById(
                     "generate-message"
@@ -770,7 +801,6 @@ const AIQuestion = {
         const title = question.title || question.subjects || '未命名题目';
         const type = question.title_category_name || '未知题型';
         
-        // 如果题目有ID，用ID删除
         if (question.id) {
             await this.deleteQuestionById(question.id);
             return;
@@ -837,14 +867,9 @@ const AIQuestion = {
 
     // =====================================================
     // AI生成题目（流式模式 - SSE）
-    //
-    // 每生成一道题就立即显示在页面上
     // =====================================================
     async generateStream() {
 
-        // =================================================
-        // 防止重复点击
-        // =================================================
         if (this.isGenerating) {
 
             console.log("正在生成中，请勿重复点击");
@@ -882,9 +907,6 @@ const AIQuestion = {
             );
 
 
-        // =================================================
-        // 检查配置控件
-        // =================================================
         if (
             !modelElement ||
             !typeElement ||
@@ -899,10 +921,6 @@ const AIQuestion = {
         }
 
 
-        // =================================================
-        // 如果初始化时没有读取到配置
-        // 再读取一次
-        // =================================================
         if (!this.currentAIConfig) {
 
             console.log(
@@ -922,25 +940,16 @@ const AIQuestion = {
         }
 
 
-        // =================================================
-        // 获取题型
-        // =================================================
         const questionType =
             typeElement.value;
 
 
-        // =================================================
-        // 获取数量
-        // =================================================
         const count =
             Number(
                 countElement.value
             );
 
 
-        // =================================================
-        // ✅ 获取分类（工种）信息
-        // =================================================
         const deptSelect = document.getElementById("ai-dept-select");
 
         const selectedOption = deptSelect ? deptSelect.options[deptSelect.selectedIndex] : null;
@@ -953,9 +962,7 @@ const AIQuestion = {
             subjectionName: selectedOption ? (selectedOption.dataset.subjectionName || "") : ""
         };
 
-        // =================================================
-        // 数量校验
-        // =================================================
+
         if (
             !count ||
             count < 1 ||
@@ -970,15 +977,9 @@ const AIQuestion = {
         }
 
 
-        // =================================================
-        // 每次生成之前清空上一次
-        // =================================================
         this.currentQuestions = [];
 
 
-        // =================================================
-        // 清空页面
-        // =================================================
         const tbody =
             document.getElementById(
                 "question-table-body"
@@ -991,9 +992,6 @@ const AIQuestion = {
         }
 
 
-        // =================================================
-        // 显示生成状态
-        // =================================================
         if (status) {
 
             status.classList.remove(
@@ -1010,9 +1008,6 @@ const AIQuestion = {
         }
 
 
-        // =================================================
-        // 禁用按钮
-        // =================================================
         const generateBtn =
             document.getElementById(
                 "generate-btn"
@@ -1026,9 +1021,6 @@ const AIQuestion = {
         }
 
 
-        // =================================================
-        // 设置生成状态
-        // =================================================
         this.isGenerating = true;
 
 
@@ -1067,9 +1059,6 @@ const AIQuestion = {
             );
 
 
-            // =================================================
-            // 调用 SSE 流式接口
-            // =================================================
             const response =
                 await fetch(
                     "/api/questions/generate-stream",
@@ -1087,9 +1076,6 @@ const AIQuestion = {
                 );
 
 
-            // =================================================
-            // HTTP错误
-            // =================================================
             if (!response.ok) {
 
                 let errorMessage =
@@ -1118,9 +1104,6 @@ const AIQuestion = {
             }
 
 
-            // =================================================
-            // 读取 SSE 流
-            // =================================================
             const reader =
                 response.body.getReader();
 
@@ -1139,7 +1122,6 @@ const AIQuestion = {
                 buffer +=
                     decoder.decode(value, { stream: true });
 
-                // 按 \n\n 分割 SSE 事件
                 const events =
                     buffer.split("\n\n");
 
@@ -1190,9 +1172,6 @@ const AIQuestion = {
             }
 
 
-            // =================================================
-            // 最终刷新一次（确保所有题目都显示了）
-            // =================================================
             this.render(this.currentQuestions);
 
         }
@@ -1227,9 +1206,6 @@ const AIQuestion = {
         }
         finally {
 
-            // =================================================
-            // 恢复状态
-            // =================================================
             this.isGenerating = false;
 
             if (status) {
@@ -1262,7 +1238,6 @@ const AIQuestion = {
 
             case "start":
 
-                // 开始生成
                 if (message) {
 
                     message.textContent =
@@ -1276,7 +1251,6 @@ const AIQuestion = {
 
             case "progress":
 
-                // 进度更新
                 if (message) {
 
                     message.textContent =
@@ -1292,20 +1266,16 @@ const AIQuestion = {
 
             case "question":
 
-                // 收到一道新题，立即显示
                 if (data.question) {
 
-                    // 追加到当前列表
                     this.currentQuestions.push(
                         data.question
                     );
 
-                    // 重新渲染
                     this.render(
                         this.currentQuestions
                     );
 
-                    // 更新进度
                     if (message) {
 
                         message.textContent =
@@ -1330,7 +1300,6 @@ const AIQuestion = {
 
             case "warning":
 
-                // 警告信息
                 console.warn(
                     "SSE警告：",
                     data.message
@@ -1348,7 +1317,6 @@ const AIQuestion = {
 
             case "end":
 
-                // 生成完成
                 if (message) {
 
                     const total =
@@ -1362,7 +1330,6 @@ const AIQuestion = {
 
                 }
 
-                // 如果 data.questions 存在，用它覆盖
                 if (
                     data.questions &&
                     Array.isArray(data.questions) &&
@@ -1389,7 +1356,6 @@ const AIQuestion = {
 
             case "error":
 
-                // 错误
                 console.error(
                     "SSE错误：",
                     data.message
@@ -1423,7 +1389,7 @@ const AIQuestion = {
 
 
     // =====================================================
-    // ✅ 渲染题目（已加入删除按钮，并在渲染后重新绑定删除事件）
+    // ✅ 渲染题目
     // =====================================================
     render(list) {
 
@@ -1464,15 +1430,11 @@ const AIQuestion = {
 
             `;
 
-            // 重新绑定删除事件
             this.bindDeleteEvents();
             return;
         }
 
 
-        // =================================================
-        // 使用 DocumentFragment 提高性能
-        // =================================================
         const fragment =
             document.createDocumentFragment();
 
@@ -1481,9 +1443,8 @@ const AIQuestion = {
             const tr =
                 document.createElement("tr");
 
-            // 存储索引和ID到 data 属性，方便删除
             tr.dataset.index = index;
-            tr.dataset.id = item.id || '';  // ✅ 存储ID
+            tr.dataset.id = item.id || '';
 
             tr.innerHTML = `
 
@@ -1518,13 +1479,9 @@ const AIQuestion = {
 
         });
 
-        // 替换整个 tbody 内容
         tbody.innerHTML = "";
         tbody.appendChild(fragment);
 
-        // =================================================
-        // ✅ 重新绑定删除事件
-        // =================================================
         this.bindDeleteEvents();
 
     },
@@ -1543,9 +1500,6 @@ const AIQuestion = {
 
         try {
 
-            // =================================================
-            // 检查题目
-            // =================================================
             if (
                 !Array.isArray(
                     this.currentQuestions
@@ -1561,9 +1515,6 @@ const AIQuestion = {
             }
 
 
-            // =================================================
-            // 按钮状态
-            // =================================================
             if (btn) {
 
                 btn.disabled = true;
@@ -1582,9 +1533,6 @@ const AIQuestion = {
             );
 
 
-            // =================================================
-            // 调用原来的导出接口
-            // =================================================
             const response =
                 await fetch(
                     "/api/questions/export",
@@ -1600,9 +1548,6 @@ const AIQuestion = {
                 );
 
 
-            // =================================================
-            // HTTP错误
-            // =================================================
             if (!response.ok) {
 
                 let errorMessage =
@@ -1631,9 +1576,6 @@ const AIQuestion = {
             }
 
 
-            // =================================================
-            // 获取Excel
-            // =================================================
             const blob =
                 await response.blob();
 
@@ -1653,9 +1595,6 @@ const AIQuestion = {
             );
 
 
-            // =================================================
-            // 创建下载
-            // =================================================
             const url =
                 window.URL.createObjectURL(blob);
 
@@ -1708,6 +1647,44 @@ const AIQuestion = {
         }
     }
 };
+
+
+// =========================================================
+// ✅ 跳转到「法规知识库」页面（tab 切换）
+//
+// 你项目里左侧菜单是用 data-page 标识页面的：
+//   <div class="menu-item" data-page="knowledge">法规知识库</div>
+//
+// 所以这里直接模拟点击那一项，
+// 就能触发项目里完整的页面切换逻辑。
+// =========================================================
+function goKnowledge() {
+
+    // 方式1：找左侧菜单里 data-page="knowledge" 的项，模拟点击
+    const menuItem =
+        document.querySelector(
+            '.menu-item[data-page="knowledge"]'
+        );
+
+    if (menuItem) {
+        menuItem.click();
+        return;
+    }
+
+    // 方式2：如果项目里有全局切换函数，也可以直接调用
+    if (
+        typeof window.App !== 'undefined' &&
+        typeof window.App.switchPage === 'function'
+    ) {
+        window.App.switchPage('knowledge');
+        return;
+    }
+
+    // 兜底
+    alert('请从左侧菜单进入「法规知识库」');
+}
+
+window.goKnowledge = goKnowledge;
 
 
 // =========================================================

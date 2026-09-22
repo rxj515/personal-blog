@@ -96,6 +96,76 @@
 
 
 /* =====================================================
+   当前使用的 PDF（只读展示）
+===================================================== */
+
+.config-card .pdf-current {
+    grid-column: 1 / -1;
+
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+
+    margin-top: -4px;
+    margin-bottom: 4px;
+
+    padding: 10px 14px;
+
+    background: #f8fafc;
+    border: 1px dashed #dbe3ef;
+    border-radius: 14px;
+
+    font-size: 13px;
+    color: #475569;
+}
+
+.config-card .pdf-current .label {
+    font-weight: 600;
+    color: #64748b;
+}
+
+.config-card .pdf-current .pdf-name {
+    max-width: 320px;
+
+    font-weight: 700;
+    color: #2563eb;
+
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.config-card .pdf-current .btn-switch {
+    margin-left: auto;
+
+    height: 30px;
+    padding: 0 14px;
+
+    display: inline-flex;
+    align-items: center;
+
+    border-radius: 10px;
+    border: 1px solid #dbe3ef;
+    background: #ffffff;
+
+    color: #334155;
+    font-size: 12px;
+    font-weight: 600;
+    text-decoration: none;
+
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.config-card .pdf-current .btn-switch:hover {
+    border-color: #2563eb;
+    color: #2563eb;
+    background: #eff6ff;
+}
+
+
+/* =====================================================
    表单
 ===================================================== */
 
@@ -637,6 +707,25 @@
 
     .operation-message {
         grid-column: 1;
+    }
+
+    /* 当前使用 PDF 小屏适配 */
+    .config-card .pdf-current {
+        grid-column: 1;
+
+        align-items: flex-start;
+    }
+
+    .config-card .pdf-current .pdf-name {
+        max-width: 100%;
+    }
+
+    .config-card .pdf-current .btn-switch {
+        margin-left: 0;
+
+        width: 100%;
+
+        justify-content: center;
     }
 
     .ai-question-page h1 {

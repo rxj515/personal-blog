@@ -16,6 +16,15 @@
         <div class="config-card">
             <div class="card-title">出题配置</div>
 
+            <!-- 当前使用的 PDF（只读展示，切换入口在知识库页） -->
+            <div class="pdf-current" style="margin-bottom: 12px;">
+                <span class="label">📄 当前使用：</span>
+                <span id="current-pdf-name" class="pdf-name">未选择</span>
+                <button type="button" class="btn-sm btn-switch" onclick="goKnowledge()">
+                    去知识库更换
+                </button>
+            </div>
+
             <div class="form-group">
                 <label>AI模型</label>
                 <div id="ai-model" class="form-input ai-model-display">正在读取当前模型...</div>
@@ -48,7 +57,7 @@
         </div>
 
         <!-- ==========================
-             生成结果（已加入删除按钮）
+             生成结果
         =========================== -->
         <div class="result-card">
             <div class="result-header">
@@ -71,7 +80,7 @@
                         <col class="col-option">
                         <col class="col-answer">
                         <col class="col-analysis">
-                        <col class="col-delete">  <!-- 新增删除列 -->
+                        <col class="col-delete">
                     </colgroup>
 
                     <thead>
@@ -86,12 +95,12 @@
                             <th>F</th>
                             <th>答案</th>
                             <th>解析</th>
-                            <th>操作</th>  <!-- 新增操作列 -->
+                            <th>操作</th>
                         </tr>
                     </thead>
 
                     <tbody id="question-table-body">
-                        <!-- 这里由 JavaScript 动态渲染，每行会包含删除按钮 -->
+                        <!-- 这里由 JavaScript 动态渲染 -->
                     </tbody>
                 </table>
             </div>

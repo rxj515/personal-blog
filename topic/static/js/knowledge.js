@@ -345,6 +345,8 @@ window.Knowledge = (function () {
 
     // =====================================================
     // ✅ 新增：加载当前使用的 PDF
+    //
+    // 同时写入 localStorage，供出题页面读取
     // =====================================================
 
     async function loadCurrentPDF() {
@@ -352,15 +354,24 @@ window.Knowledge = (function () {
             const result = await window.AppAPI.get('/api/pdf/current');
             const nameEl = document.getElementById('current-pdf-name');
 
-            if (nameEl) {
-                if (result.success && result.data && result.data.current_pdf) {
-                    nameEl.textContent = result.data.current_pdf;
-                } else {
-                    nameEl.textContent = '未选择';
-                }
+            let pdfName = '';
+
+            if (result.success && result.data && result.data.current_pdf) {
+                pdfName = result.data.current_pdf;
             }
+
+            if (nameEl) {
+                nameEl.textContent = pdfName || '未选择';
+            }
+
+            // ✅ 写入 localStorage，供出题页面读取
+            localStorage.setItem('currentPDFName', pdfName || '');
+
         } catch (error) {
             console.error('加载当前 PDF 失败：', error);
+
+            // 读取失败时也清一下，避免出题页显示过期数据
+            localStorage.setItem('currentPDFName', '');
         }
     }
 
@@ -376,6 +387,10 @@ window.Knowledge = (function () {
 
             if (result.success) {
                 document.getElementById('current-pdf-name').textContent = filename;
+
+                // ✅ 写入 localStorage，供出题页面读取
+                localStorage.setItem('currentPDFName', filename || '');
+
                 showToast('✅ 已切换到：' + filename, 'success');
 
                 // ✅ 重新加载知识库（会根据当前选中的 PDF 加载对应数据）
@@ -417,6 +432,10 @@ window.Knowledge = (function () {
                 const current = document.getElementById('current-pdf-name');
                 if (current && current.textContent === filename) {
                     current.textContent = '未选择';
+
+                    // ✅ 同步清空 localStorage，避免出题页显示已删除的 PDF
+                    localStorage.setItem('currentPDFName', '');
+
                     // 重新加载知识库
                     await loadKnowledge();
                 }
