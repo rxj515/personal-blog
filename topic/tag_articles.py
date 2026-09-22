@@ -586,12 +586,22 @@ def process_single_knowledge(json_path, knowledge_name):
         traceback.print_exc()
         return {"success": False, "count": 0}
 
-
 # ============================================================
 # 9. 主函数
 # ============================================================
 
-def main():
+def main(source_file=None):
+    """
+    打标签主函数
+
+    source_file:
+        None
+            → 处理全部知识库
+
+        "山西统筹煤炭安全新规通知.pdf"
+            → 只处理当前指定 PDF 对应的知识库
+    """
+
     global tag_progress
 
     tag_progress = {
@@ -606,66 +616,499 @@ def main():
     print("🏷️  开始打标签（树节点直出，无大类）...")
     print("=" * 60)
 
+    # ========================================================
+    # 1. 检查 Excel 节点
+    # ========================================================
+
     if not ALL_NODES:
-        print("❌ 没有读到任何树节点，检查 Excel 路径")
+
+        print(
+            "❌ 没有读到任何树节点，检查 Excel 路径"
+        )
+
         tag_progress["status"] = "error"
         tag_progress["message"] = "没有读到树节点"
-        return
+
+        return {
+            "success": False,
+            "error": "没有读到树节点"
+        }
+
+    # ========================================================
+    # 2. 检查知识库目录
+    # ========================================================
 
     try:
+
         if not KNOWLEDGE_DIR.exists():
+
+            message = (
+                f"知识库目录不存在："
+                f"{KNOWLEDGE_DIR}"
+            )
+
+            print(
+                f"❌ {message}"
+            )
+
             tag_progress["status"] = "error"
-            tag_progress["message"] = f"知识库目录不存在：{KNOWLEDGE_DIR}"
-            print(f"❌ 知识库目录不存在：{KNOWLEDGE_DIR}")
-            return
+            tag_progress["message"] = message
+
+            return {
+                "success": False,
+                "error": message
+            }
+
+        # ====================================================
+        # 3. 确定本次要处理哪些知识库
+        # ====================================================
+
+        knowledge_files = []
+
+        # ====================================================
+        # 情况 A：
+        # 指定了 source_file
+        #
+        # 例如：
+        #
+        # 山西统筹煤炭安全新规通知.pdf
+        #
+        # 只处理：
+        #
+        # data/knowledge/
+        #     山西统筹煤炭安全新规通知/
+        #         articles.json
+        # ====================================================
+
+        if source_file:
+
+            source_file = str(
+                source_file
+            ).strip()
+
+            print()
+            print("=" * 60)
+            print("本次为【单 PDF 打标签】")
+            print(
+                f"当前 PDF：{source_file}"
+            )
+            print("不会处理其他 PDF")
+            print("=" * 60)
+
+            # ------------------------------------------------
+            # 去掉 .pdf 后缀
+            # ------------------------------------------------
+
+            source_name = source_file
+
+            if source_name.lower().endswith(".pdf"):
+                source_name = source_name[:-4]
+
+            source_name = source_name.strip()
+
+            print(
+                f"对应知识库目录名：{source_name}"
+            )
+
+            # ------------------------------------------------
+            # 先精确匹配
+            # ------------------------------------------------
+
+            target_dir = (
+                KNOWLEDGE_DIR /
+                source_name
+            )
+
+            json_file = (
+                target_dir /
+                "articles.json"
+            )
+
+            # ------------------------------------------------
+            # 如果精确匹配不存在
+            # 再尝试模糊匹配
+            # ------------------------------------------------
+
+            if not json_file.exists():
+
+                print()
+                print(
+                    "⚠️ 精确匹配没有找到，"
+                    "开始搜索知识库目录..."
+                )
+
+                target_dir = None
+
+                for dir_path in sorted(
+                    KNOWLEDGE_DIR.iterdir()
+                ):
+
+                    if not dir_path.is_dir():
+                        continue
+
+                    if (
+                        dir_path.name ==
+                        source_name
+                    ):
+                        target_dir = dir_path
+                        break
+
+                    if (
+                        source_name in
+                        dir_path.name
+                    ):
+                        target_dir = dir_path
+                        break
+
+                if target_dir:
+
+                    json_file = (
+                        target_dir /
+                        "articles.json"
+                    )
+
+            # ------------------------------------------------
+            # 找不到
+            # ------------------------------------------------
+
+            if (
+                not target_dir
+                or not json_file.exists()
+            ):
+
+                print()
+                print(
+                    "❌ 没有找到当前 PDF 对应的知识库"
+                )
+
+                print(
+                    f"PDF：{source_file}"
+                )
+
+                print(
+                    f"查找目录：{KNOWLEDGE_DIR}"
+                )
+
+                tag_progress["status"] = "error"
+
+                tag_progress["message"] = (
+                    f"没有找到知识库："
+                    f"{source_file}"
+                )
+
+                return {
+                    "success": False,
+                    "error": (
+                        f"没有找到知识库："
+                        f"{source_file}"
+                    )
+                }
+
+            # ------------------------------------------------
+            # 加入处理列表
+            # ------------------------------------------------
+
+            knowledge_files.append(
+                (
+                    json_file,
+                    target_dir.name
+                )
+            )
+
+            print()
+            print(
+                "✅ 已找到当前 PDF 对应知识库："
+            )
+
+            print(
+                f"   {json_file}"
+            )
+
+        # ====================================================
+        # 情况 B：
+        # 没有指定 source_file
+        #
+        # 保持原来的全部处理逻辑
+        # ====================================================
+
+        else:
+
+            print()
+            print("=" * 60)
+            print("本次为【全部知识库打标签】")
+            print("未指定 PDF，将处理所有知识库")
+            print("=" * 60)
+
+            for dir_path in sorted(
+                KNOWLEDGE_DIR.iterdir()
+            ):
+
+                if not dir_path.is_dir():
+                    continue
+
+                json_file = (
+                    dir_path /
+                    "articles.json"
+                )
+
+                if not json_file.exists():
+                    continue
+
+                knowledge_files.append(
+                    (
+                        json_file,
+                        dir_path.name
+                    )
+                )
+
+        # ====================================================
+        # 4. 检查最终要处理的数量
+        # ====================================================
+
+        if not knowledge_files:
+
+            print()
+            print(
+                "❌ 没有找到需要处理的知识库"
+            )
+
+            tag_progress["status"] = "error"
+            tag_progress["message"] = (
+                "没有找到需要处理的知识库"
+            )
+
+            return {
+                "success": False,
+                "error": "没有找到需要处理的知识库"
+            }
+
+        print()
+        print(
+            f"本次准备处理 "
+            f"{len(knowledge_files)} 个知识库"
+        )
+
+        for index, (
+            json_file,
+            knowledge_name
+        ) in enumerate(
+            knowledge_files,
+            start=1
+        ):
+
+            print(
+                f"{index}. "
+                f"{knowledge_name}"
+            )
+
+        # ====================================================
+        # 5. 开始处理
+        # ====================================================
 
         total_processed = 0
         total_success = 0
         total_failed = 0
 
-        for dir_path in sorted(KNOWLEDGE_DIR.iterdir()):
-            if not dir_path.is_dir():
-                continue
+        tag_progress["total"] = (
+            len(knowledge_files)
+        )
 
-            json_file = dir_path / "articles.json"
-            if not json_file.exists():
-                continue
+        for index, (
+            json_file,
+            knowledge_name
+        ) in enumerate(
+            knowledge_files,
+            start=1
+        ):
 
-            result = process_single_knowledge(json_file, dir_path.name)
+            print()
+            print("=" * 60)
 
-            if result["success"]:
-                total_success += 1
-                total_processed += result["count"]
+            if source_file:
+
+                print(
+                    f"正在处理当前 PDF "
+                    f"[{index}/{len(knowledge_files)}]"
+                )
+
             else:
+
+                print(
+                    f"正在处理知识库 "
+                    f"[{index}/{len(knowledge_files)}]"
+                )
+
+            print(
+                f"知识库：{knowledge_name}"
+            )
+
+            print(
+                f"文件：{json_file}"
+            )
+
+            print("=" * 60)
+
+            try:
+
+                result = process_single_knowledge(
+                    json_file,
+                    knowledge_name
+                )
+
+                if result.get("success"):
+
+                    total_success += 1
+
+                    total_processed += (
+                        result.get(
+                            "count",
+                            0
+                        )
+                    )
+
+                else:
+
+                    total_failed += 1
+
+            except Exception as e:
+
                 total_failed += 1
+
+                print(
+                    f"❌ 知识库处理失败：{e}"
+                )
+
+                import traceback
+
+                traceback.print_exc()
+
+            # 更新进度
+
+            tag_progress["processed"] = (
+                index
+            )
+
+            tag_progress["message"] = (
+                f"正在处理："
+                f"{knowledge_name}"
+            )
+
+        # ====================================================
+        # 6. 最终结果
+        # ====================================================
 
         print()
         print("=" * 60)
-        print("✅ 打标签完成！")
+
+        if source_file:
+
+            print(
+                "✅ 当前 PDF 打标签完成！"
+            )
+
+        else:
+
+            print(
+                "✅ 全部知识库打标签完成！"
+            )
+
         print("=" * 60)
-        print(f"   📊 成功处理：{total_success} 个知识库")
-        print(f"   📊 处理失败：{total_failed} 个知识库")
-        print(f"   📊 共打标签：{total_processed} 条法条")
+
+        print(
+            f"   📊 成功处理："
+            f"{total_success} 个知识库"
+        )
+
+        print(
+            f"   📊 处理失败："
+            f"{total_failed} 个知识库"
+        )
+
+        print(
+            f"   📊 共打标签："
+            f"{total_processed} 条法条"
+        )
+
         print("=" * 60)
 
         tag_progress["status"] = "done"
-        tag_progress["processed"] = total_processed
-        tag_progress["message"] = f"✅ 全部完成！已为 {total_processed} 条法条打上树节点标签"
+
+        tag_progress["processed"] = (
+            total_processed
+        )
+
+        if source_file:
+
+            tag_progress["message"] = (
+                f"✅ {source_file} "
+                f"打标签完成！"
+                f"共 {total_processed} 条"
+            )
+
+        else:
+
+            tag_progress["message"] = (
+                f"✅ 全部完成！"
+                f"已为 {total_processed} "
+                f"条法条打上树节点标签"
+            )
 
         return {
             "success": True,
             "total_knowledge": total_success,
-            "total_articles": total_processed
+            "total_articles": total_processed,
+            "source_file": source_file
         }
 
     except Exception as e:
-        tag_progress["status"] = "error"
-        tag_progress["message"] = f"❌ 打标签失败：{str(e)}"
-        print(f"❌ 打标签失败：{e}")
-        import traceback
-        traceback.print_exc()
-        return {"success": False, "error": str(e)}
 
+        tag_progress["status"] = "error"
+
+        tag_progress["message"] = (
+            f"❌ 打标签失败：{str(e)}"
+        )
+
+        print(
+            f"❌ 打标签失败：{e}"
+        )
+
+        import traceback
+
+        traceback.print_exc()
+
+        return {
+            "success": False,
+            "error": str(e),
+            "source_file": source_file
+        }
+
+
+# ============================================================
+# 直接运行脚本
+# ============================================================
 
 if __name__ == "__main__":
-    main()
+
+    import sys
+
+    source_file = None
+
+    # --------------------------------------------------------
+    # 命令行：
+    #
+    # python tag_articles.py
+    #
+    # → 全部知识库打标签
+    #
+    #
+    # python tag_articles.py xxx.pdf
+    #
+    # → 只给指定 PDF 打标签
+    # --------------------------------------------------------
+
+    if len(sys.argv) > 1:
+        source_file = sys.argv[1]
+
+    main(
+        source_file=source_file
+    )

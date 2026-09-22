@@ -1,8 +1,8 @@
 [
   {
-    "user_id": "python-718afd4a59eca901",
+    "user_id": "python-4babca30afa3e766",
     "username": "admin",
-    "password_hash": "pbkdf2_sha256$600000$e97ad3dfe358965d66baef34e60ac2b6$85UGSb_a0TPhHjhqh7U9KUYzZlEoLH2Uc-atZaNOPWE",
+    "password_hash": "pbkdf2_sha256$600000$392a0577282825dd54a90972812bb3d4$Sh-zTviaC3u330Vqu1wU3wazLFrNIzrBWL6Tl6qtM9s",
     "role": "管理员",
     "enabled": true,
     "user_code": "admin",
@@ -15,15 +15,5 @@
     "register_dept_name": null,
     "mine_id": null,
     "mine_name": null
-  },
-  {
-    "user_id": "python-bde8aee8070342af88b8165ed7f87710",
-    "username": "test",
-    "user_name": "test",
-    "role": "普通用户",
-    "enabled": true,
-    "password_hash": "pbkdf2_sha256$600000$f6ea95bb4103a26d2f457d5f71aa9792$3OKeYC8RshUBkiO9dMDsNTy8svfzPOvfBEeAAz7BMBU",
-    "created_at": "2026-09-16 07:57:19",
-    "last_login": null
   }
 ]

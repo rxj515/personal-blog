@@ -1502,7 +1502,7 @@ def find_pdf_files():
     return sorted(PDF_DIR.glob("*.pdf"))
 
 
-def main():
+def main(source_file=None):
     print("\n====================================")
     print("       通用法规知识库构建程序")
     print("       MinerU API 版（数组输出）")
@@ -1513,115 +1513,410 @@ def main():
     print("\nPDF目录：")
     print(PDF_DIR.resolve())
 
+    # =====================================================
+    # 检查 MinerU Token
+    # =====================================================
     try:
         check_mineru_token()
     except Exception as e:
         print(f"\n❌ {e}")
-        return
+        return False
 
-    pdf_files = find_pdf_files()
-    if not pdf_files:
-        print("\n❌ 没有找到 PDF 文件。")
-        print("\n请把法规 PDF 放到：")
-        print(PDF_DIR.resolve())
-        return
+    # =====================================================
+    # 确定本次需要处理的 PDF
+    #
+    # source_file 有值：
+    #     只处理当前指定的 PDF
+    #
+    # source_file 没有值：
+    #     才处理 pdf 目录下的全部 PDF
+    # =====================================================
 
-    print(f"\n发现 {len(pdf_files)} 个 PDF：")
-    for index, pdf_path in enumerate(pdf_files, start=1):
-        try:
-            page_count = get_pdf_page_count(pdf_path)
-        except Exception:
-            page_count = "未知"
-        print(f"{index}. {pdf_path.name}  [{page_count}页]")
+    if source_file:
+        # -------------------------------------------------
+        # 单 PDF 更新模式
+        # -------------------------------------------------
+        pdf_path = Path(str(source_file).strip())
+
+        # -------------------------------------------------
+        # 如果传进来的是文件名：
+        #
+        # 山西统筹煤炭安全新规通知.pdf
+        #
+        # 那么必须去：
+        #
+        # D:\personal-blog\topic\pdf\
+        #
+        # 里面找
+        # -------------------------------------------------
+        if not pdf_path.is_absolute():
+            pdf_path = PDF_DIR / pdf_path
+
+        pdf_path = pdf_path.resolve()
+
+        # -------------------------------------------------
+        # 检查 PDF 是否存在
+        # -------------------------------------------------
+        if not pdf_path.exists():
+            print("\n❌ 指定的 PDF 不存在：")
+            print(f"实际查找路径：{pdf_path}")
+
+            print("\nPDF目录：")
+            print(PDF_DIR.resolve())
+
+            return False
+
+        # -------------------------------------------------
+        # 检查是否为 PDF
+        # -------------------------------------------------
+        if pdf_path.suffix.lower() != ".pdf":
+            print("\n❌ 指定文件不是 PDF：")
+            print(pdf_path)
+            return False
+
+        # -------------------------------------------------
+        # 单 PDF 模式
+        # -------------------------------------------------
+        pdf_files = [pdf_path]
+
+        print("\n====================================")
+        print("本次为【单 PDF 更新】")
+        print(f"当前 PDF：{pdf_path.name}")
+        print(f"实际路径：{pdf_path}")
+        print("不会处理其他 PDF")
+        print("====================================")
+
+    else:
+        # =================================================
+        # 没有指定 PDF
+        # 才扫描整个 pdf 目录
+        # =================================================
+        pdf_files = find_pdf_files()
+
+        if not pdf_files:
+            print("\n❌ 没有找到 PDF 文件。")
+
+            print("\n请把法规 PDF 放到：")
+            print(PDF_DIR.resolve())
+
+            return False
+
+        print(f"\n发现 {len(pdf_files)} 个 PDF：")
+
+        for index, pdf_path in enumerate(
+            pdf_files,
+            start=1
+        ):
+            try:
+                page_count = get_pdf_page_count(
+                    pdf_path
+                )
+            except Exception:
+                page_count = "未知"
+
+            print(
+                f"{index}. {pdf_path.name} "
+                f"[{page_count}页]"
+            )
+
+    # =====================================================
+    # 开始处理 PDF
+    # =====================================================
 
     success_count = 0
     failed_count = 0
 
-    for index, pdf_path in enumerate(pdf_files, start=1):
+    for index, pdf_path in enumerate(
+        pdf_files,
+        start=1
+    ):
+
         print("\n====================================")
-        print(f"正在处理 [{index}/{len(pdf_files)}]")
+        print(
+            f"正在处理 [{index}/{len(pdf_files)}]"
+        )
         print(pdf_path.name)
         print("====================================")
 
         try:
-            law_name, all_lines, markdown = extract_pdf(pdf_path)
 
-            print(f"\n识别法规名称：{law_name}")
-            print(f"提取文本：{len(all_lines)} 行")
+            # -------------------------------------------------
+            # 1. MinerU 解析当前 PDF
+            # -------------------------------------------------
+
+            law_name, all_lines, markdown = extract_pdf(
+                pdf_path
+            )
+
+            print(
+                f"\n识别法规名称：{law_name}"
+            )
+
+            print(
+                f"提取文本：{len(all_lines)} 行"
+            )
+
+            # -------------------------------------------------
+            # 2. 保存原始 TXT
+            # -------------------------------------------------
 
             try:
-                raw_path = save_raw_txt(pdf_path, all_lines)
-                print(f"原始TXT：{raw_path.resolve()}")
-            except Exception as e:
-                print(f"⚠️ 原始TXT保存失败：{e}")
 
-            doc_type = detect_document_type(markdown)
-            print(f"\n文档类型：{doc_type}")
+                raw_path = save_raw_txt(
+                    pdf_path,
+                    all_lines
+                )
+
+                print(
+                    f"原始TXT：{raw_path.resolve()}"
+                )
+
+            except Exception as e:
+
+                print(
+                    f"⚠️ 原始TXT保存失败：{e}"
+                )
+
+            # -------------------------------------------------
+            # 3. 判断文档类型
+            # -------------------------------------------------
+
+            doc_type = detect_document_type(
+                markdown
+            )
+
+            print(
+                f"\n文档类型：{doc_type}"
+            )
 
             all_items = []
 
+            # -------------------------------------------------
+            # 4. 法规书
+            # -------------------------------------------------
+
             if doc_type == "law_book":
-                cleaned = clean_text(all_lines)
-                print(f"清洗后：{len(cleaned)} 段")
+
+                cleaned = clean_text(
+                    all_lines
+                )
+
+                print(
+                    f"清洗后：{len(cleaned)} 段"
+                )
 
                 try:
-                    clean_path = save_clean_txt(pdf_path, cleaned)
-                    print(f"清洗TXT：{clean_path.resolve()}")
+
+                    clean_path = save_clean_txt(
+                        pdf_path,
+                        cleaned
+                    )
+
+                    print(
+                        f"清洗TXT："
+                        f"{clean_path.resolve()}"
+                    )
+
                 except Exception as e:
-                    print(f"⚠️ 清洗TXT保存失败：{e}")
+
+                    print(
+                        f"⚠️ 清洗TXT保存失败：{e}"
+                    )
 
                 part1_articles = build_part1_json(
-                    cleaned, law_name, pdf_path.name, part="第一部分",
+                    cleaned,
+                    law_name,
+                    pdf_path.name,
+                    part="第一部分",
                 )
-                part2_guides = parse_guide_part(
-                    markdown, law_name, pdf_path.name,
-                )
-                all_items.extend(part1_articles)
-                all_items.extend(part2_guides)
 
-                print(f"第一部分条文：{len(part1_articles)} 条")
-                print(f"第二部分对照检查：{len(part2_guides)} 条")
+                part2_guides = parse_guide_part(
+                    markdown,
+                    law_name,
+                    pdf_path.name,
+                )
+
+                all_items.extend(
+                    part1_articles
+                )
+
+                all_items.extend(
+                    part2_guides
+                )
+
+                print(
+                    f"第一部分条文："
+                    f"{len(part1_articles)} 条"
+                )
+
+                print(
+                    f"第二部分对照检查："
+                    f"{len(part2_guides)} 条"
+                )
+
+            # -------------------------------------------------
+            # 5. 通知
+            # -------------------------------------------------
 
             elif doc_type == "notice_items":
+
                 all_items = parse_notice_items(
-                    markdown, law_name, pdf_path.name,
+                    markdown,
+                    law_name,
+                    pdf_path.name,
                 )
-                print(f"通知条文：{len(all_items)} 条")
+
+                print(
+                    f"通知条文："
+                    f"{len(all_items)} 条"
+                )
+
+            # -------------------------------------------------
+            # 6. 规程
+            # -------------------------------------------------
 
             elif doc_type == "regulation":
+
                 all_items = parse_regulation(
-                    markdown, law_name, pdf_path.name,
+                    markdown,
+                    law_name,
+                    pdf_path.name,
                 )
-                print(f"规程条文：{len(all_items)} 条")
+
+                print(
+                    f"规程条文："
+                    f"{len(all_items)} 条"
+                )
+
+            # -------------------------------------------------
+            # 7. 未识别
+            # -------------------------------------------------
 
             else:
-                print(f"⚠️ 未识别文档类型，跳过：{pdf_path.name}")
+
+                print(
+                    f"⚠️ 未识别文档类型，跳过："
+                    f"{pdf_path.name}"
+                )
+
                 failed_count += 1
+
                 continue
+
+            # -------------------------------------------------
+            # 8. 没有解析出条文
+            # -------------------------------------------------
 
             if not all_items:
-                print("\n❌ 没有识别到任何条文。")
+
+                print(
+                    "\n❌ 没有识别到任何条文。"
+                )
+
                 failed_count += 1
+
                 continue
 
-            save_articles_json(pdf_path, law_name, all_items)
+            # -------------------------------------------------
+            # 9. 保存 articles.json
+            # -------------------------------------------------
+
+            save_articles_json(
+                pdf_path,
+                law_name,
+                all_items
+            )
+
+            print(
+                f"\n✅ PDF处理成功："
+                f"{pdf_path.name}"
+            )
+
+            print(
+                f"   共生成："
+                f"{len(all_items)} 条知识"
+            )
+
             success_count += 1
 
         except Exception as e:
+
             failed_count += 1
-            print(f"\n❌ 处理失败：{e}")
+
+            print(
+                f"\n❌ 处理失败：{e}"
+            )
+
             import traceback
+
             traceback.print_exc()
+
+    # =====================================================
+    # 处理结果
+    # =====================================================
 
     print("\n====================================")
     print("处理完成")
     print("====================================")
-    print(f"成功处理 PDF：{success_count} 个")
-    print(f"处理失败 PDF：{failed_count} 个")
+
+    print(
+        f"成功处理 PDF："
+        f"{success_count} 个"
+    )
+
+    print(
+        f"处理失败 PDF："
+        f"{failed_count} 个"
+    )
+
     print("\n📁 知识库目录：")
-    print(KNOWLEDGE_DIR.resolve())
+
+    print(
+        KNOWLEDGE_DIR.resolve()
+    )
+
     print("====================================")
 
+    # =====================================================
+    # 返回结果
+    #
+    # 单 PDF 更新：
+    #     成功 -> True
+    #     失败 -> False
+    #
+    # 全量处理：
+    #     只要有一个成功就算本次有成功
+    # =====================================================
+
+    if success_count > 0:
+        return True
+
+    return False
+
+
+# =========================================================
+# 直接运行 build_knowledge.py 时
+# =========================================================
 
 if __name__ == "__main__":
-    main()
+    import sys
+
+    # -----------------------------------------------------
+    # 命令行启动方式：
+    #
+    # python build_knowledge.py
+    #
+    # = 处理全部 PDF
+    #
+    #
+    # python build_knowledge.py xxx.pdf
+    #
+    # = 只处理指定 PDF
+    # -----------------------------------------------------
+
+    source_file = None
+
+    if len(sys.argv) > 1:
+        source_file = sys.argv[1]
+
+    main(source_file=source_file)

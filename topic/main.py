@@ -219,8 +219,6 @@ templates = Jinja2Templates(
 # SECRET_KEY = SESSION_SECRET_KEY
 
 
-
-
 # Session 固定密钥
 SESSION_SECRET_KEY = os.environ.get(
     "SESSION_SECRET_KEY",
@@ -228,8 +226,6 @@ SESSION_SECRET_KEY = os.environ.get(
 )
 
 SECRET_KEY = SESSION_SECRET_KEY
-
-
 
 
 
@@ -1797,47 +1793,201 @@ def system_info():
 #
 # ============================================================
 
+from fastapi import Request
+
+
 @app.post("/api/knowledge/update")
-def update_knowledge():
-
+async def update_knowledge(request: Request):
     try:
-
         print()
         print("=" * 60)
         print("开始更新法规知识库")
         print("=" * 60)
 
-        import build_knowledge
+        # =================================================
+        # 1. 获取前端请求数据
+        # =================================================
 
-        build_knowledge.main()
+        source_file = None
+
+        # 读取 Content-Type
+        content_type = request.headers.get("content-type", "")
+
+        print(f"请求 Content-Type：{content_type}")
+
+        # -------------------------------------------------
+        # 情况一：前端发送 JSON
+        # -------------------------------------------------
+        if "application/json" in content_type:
+            try:
+                data = await request.json()
+
+                print(f"收到 JSON 数据：{data}")
+
+                if isinstance(data, dict):
+                    source_file = data.get("source_file")
+
+            except Exception as e:
+                print(f"JSON 读取失败：{e}")
+
+        # -------------------------------------------------
+        # 情况二：前端发送 FormData
+        # -------------------------------------------------
+        elif "multipart/form-data" in content_type:
+            try:
+                form = await request.form()
+
+                print(f"收到 FormData：{form}")
+
+                source_file = form.get("source_file")
+
+            except Exception as e:
+                print(f"FormData 读取失败：{e}")
+
+        # -------------------------------------------------
+        # 情况三：前端发送普通表单
+        # -------------------------------------------------
+        elif "application/x-www-form-urlencoded" in content_type:
+            try:
+                form = await request.form()
+
+                print(f"收到表单数据：{form}")
+
+                source_file = form.get("source_file")
+
+            except Exception as e:
+                print(f"表单读取失败：{e}")
+
+        # -------------------------------------------------
+        # 情况四：没有 Content-Type，尝试读取原始数据
+        # -------------------------------------------------
+        else:
+            try:
+                body = await request.body()
+
+                print(f"收到原始请求：{body}")
+
+                if body:
+                    try:
+                        data = json.loads(body.decode("utf-8"))
+
+                        print(f"原始数据解析结果：{data}")
+
+                        if isinstance(data, dict):
+                            source_file = data.get("source_file")
+
+                    except Exception as e:
+                        print(f"原始 JSON 解析失败：{e}")
+
+            except Exception as e:
+                print(f"读取请求失败：{e}")
+
+        # =================================================
+        # 2. 打印最终获取到的 PDF
+        # =================================================
 
         print()
-        print("法规知识库更新完成")
+        print(f"最终获取到的 source_file：{source_file}")
+
+        # =================================================
+        # 3. 没有获取到 PDF
+        # =================================================
+
+        if not source_file:
+            print("❌ 没有获取到 source_file")
+
+            return {
+                "success": False,
+                "message": "没有获取到要更新的 PDF 文件名"
+            }
+
+        # =================================================
+        # 4. 转成字符串
+        # =================================================
+
+        source_file = str(source_file).strip()
+
+        print(f"当前选择的 PDF：{source_file}")
+
+        # =================================================
+        # 5. 调用知识库构建程序
+        # =================================================
+
+        print()
+        print("=" * 60)
+        print("开始调用 build_knowledge")
+        print(f"指定 PDF：{source_file}")
+        print("=" * 60)
+
+        import build_knowledge
+
+        # ⭐⭐⭐ 关键：只更新当前选中的 PDF ⭐⭐⭐
+        build_knowledge.main(
+            source_file=source_file
+        )
+
+        # =================================================
+        # 6. 更新完成
+        # =================================================
+
+        print()
+        print("=" * 60)
+        print(f"PDF [{source_file}] 更新完成")
+        print("=" * 60)
         print()
 
         return {
             "success": True,
-            "message": "法规知识库更新完成"
+            "message": f"《{source_file}》更新完成",
+            "source_file": source_file
         }
 
-    except ModuleNotFoundError:
+    # =====================================================
+    # 7. 找不到 build_knowledge.py
+    # =====================================================
+
+    except ModuleNotFoundError as e:
+
+        print()
+        print("=" * 60)
+        print("找不到 build_knowledge.py")
+        print("=" * 60)
+        print(f"错误：{repr(e)}")
+        print()
 
         return {
             "success": False,
             "message": "找不到 build_knowledge.py"
         }
 
+    # =====================================================
+    # 8. 其他异常
+    # =====================================================
+
     except Exception as e:
 
+        import traceback
+
         print()
+        print("=" * 60)
         print("法规知识库更新失败")
-        print(e)
+        print("=" * 60)
+
+        print(f"错误类型：{type(e).__name__}")
+        print(f"错误信息：{str(e)}")
+        print()
+        print("完整错误位置：")
+
+        traceback.print_exc()
+
+        print("=" * 60)
         print()
 
         return {
             "success": False,
-            "message": f"更新失败：{e}"
+            "message": f"更新失败：{str(e)}"
         }
+
 
 # ============================================================
 # 25. 读取法规知识库
@@ -3907,33 +4057,242 @@ def delete_pdf(filename: str):
 # ============================================================
 
 @app.post("/api/tag/articles")
-def tag_articles_api():
+async def tag_articles_api(request: Request):
     """
-    给法条打工种标签（独立接口）
+    给当前选中的 PDF 法条打工种标签
+
+    前端传：
+    {
+        "source_file": "山西统筹煤炭安全新规通知.pdf"
+    }
+
+    只处理当前选中的 PDF，
+    不处理其他 PDF。
     """
+
     try:
 
         print()
         print("=" * 60)
-        print("🏷️ 开始打工种标签...")
+        print("🏷️ 开始给法规打工种标签")
+        print("=" * 60)
+
+        # =====================================================
+        # 1. 获取前端传来的 PDF
+        # =====================================================
+
+        source_file = None
+
+        content_type = request.headers.get(
+            "content-type",
+            ""
+        )
+
+        print(
+            f"请求 Content-Type：{content_type}"
+        )
+
+        # -----------------------------------------------------
+        # JSON
+        # -----------------------------------------------------
+
+        if "application/json" in content_type:
+
+            try:
+
+                data = await request.json()
+
+                print(
+                    f"收到 JSON 数据：{data}"
+                )
+
+                if isinstance(data, dict):
+                    source_file = data.get(
+                        "source_file"
+                    )
+
+            except Exception as e:
+
+                print(
+                    f"JSON 读取失败：{e}"
+                )
+
+        # -----------------------------------------------------
+        # FormData
+        # -----------------------------------------------------
+
+        elif "multipart/form-data" in content_type:
+
+            try:
+
+                form = await request.form()
+
+                print(
+                    f"收到 FormData：{form}"
+                )
+
+                source_file = form.get(
+                    "source_file"
+                )
+
+            except Exception as e:
+
+                print(
+                    f"FormData 读取失败：{e}"
+                )
+
+        # -----------------------------------------------------
+        # 表单
+        # -----------------------------------------------------
+
+        elif "application/x-www-form-urlencoded" in content_type:
+
+            try:
+
+                form = await request.form()
+
+                print(
+                    f"收到表单数据：{form}"
+                )
+
+                source_file = form.get(
+                    "source_file"
+                )
+
+            except Exception as e:
+
+                print(
+                    f"表单读取失败：{e}"
+                )
+
+        # =====================================================
+        # 2. 检查 PDF
+        # =====================================================
+
+        print()
+        print(
+            f"最终获取到的 source_file："
+            f"{source_file}"
+        )
+
+        if not source_file:
+
+            print(
+                "❌ 没有获取到要打标签的 PDF"
+            )
+
+            return {
+                "success": False,
+                "message": "请先选择要打标签的 PDF"
+            }
+
+        source_file = str(
+            source_file
+        ).strip()
+
+        print()
+        print(
+            f"当前打标签 PDF："
+            f"{source_file}"
+        )
+
+        # =====================================================
+        # 3. 调用 tag_articles
+        # =====================================================
+
+        print()
+        print("=" * 60)
+        print("开始调用 tag_articles")
+        print(
+            f"指定 PDF：{source_file}"
+        )
         print("=" * 60)
 
         import tag_articles
-        tag_articles.main()
 
-        print("✅ 工种标签打标完成")
+        result = tag_articles.main(
+            source_file=source_file
+        )
+
+        # =====================================================
+        # 4. 判断执行结果
+        # =====================================================
+
+        if result is False:
+
+            print()
+            print(
+                f"❌ PDF [{source_file}] "
+                f"打标签失败"
+            )
+
+            return {
+                "success": False,
+                "message": (
+                    f"《{source_file}》"
+                    "打标签失败"
+                ),
+                "source_file": source_file
+            }
+
+        # =====================================================
+        # 5. 成功
+        # =====================================================
+
+        print()
+        print("=" * 60)
+        print(
+            f"✅ PDF [{source_file}] "
+            f"打标签完成"
+        )
         print("=" * 60)
         print()
 
         return {
             "success": True,
-            "message": "打标签完成"
+            "message": (
+                f"《{source_file}》"
+                "打标签完成"
+            ),
+            "source_file": source_file
+        }
+
+    except ModuleNotFoundError as e:
+
+        print()
+        print(
+            "❌ 找不到 tag_articles.py：",
+            e
+        )
+
+        return {
+            "success": False,
+            "message": "找不到 tag_articles.py"
         }
 
     except Exception as e:
 
+        import traceback
+
         print()
-        print("❌ 打标签失败：", e)
+        print("=" * 60)
+        print("❌ 打标签失败")
+        print("=" * 60)
+
+        print(
+            f"错误类型：{type(e).__name__}"
+        )
+
+        print(
+            f"错误信息：{str(e)}"
+        )
+
+        print()
+        print("完整错误位置：")
+
+        traceback.print_exc()
+
+        print("=" * 60)
         print()
 
         return {
@@ -3941,6 +4300,7 @@ def tag_articles_api():
             "message": f"打标签失败：{e}"
         }
 
+        
 # ============================================================
 # 36. 删除新题（通过ID精确删除，同时从历史题库中移除）
 #

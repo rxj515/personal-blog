@@ -1109,13 +1109,10 @@ async function loadKnowledge() {
         `;
     }
 
-
     // =====================================================
     // 更新知识库
     // =====================================================
-
     async function updateKnowledge() {
-
         const button =
             document.getElementById(
                 'update-knowledge-btn'
@@ -1125,6 +1122,43 @@ async function loadKnowledge() {
             return;
         }
 
+        // =================================================
+        // 1. 获取当前选中的 PDF
+        // =================================================
+        const currentPdfElement =
+            document.getElementById(
+                'current-pdf-name'
+            );
+
+        let sourceFile = '';
+
+        if (currentPdfElement) {
+            sourceFile =
+                currentPdfElement.textContent.trim();
+        }
+
+        console.log(
+            '准备更新的 PDF：',
+            sourceFile
+        );
+
+        // =================================================
+        // 2. 检查是否选择了 PDF
+        // =================================================
+        if (
+            !sourceFile ||
+            sourceFile === '未选择'
+        ) {
+            showToast(
+                '❌ 请先选择要更新的 PDF',
+                'error'
+            );
+            return;
+        }
+
+        // =================================================
+        // 3. 保存按钮原来的文字
+        // =================================================
         const oldText =
             button.textContent;
 
@@ -1133,29 +1167,55 @@ async function loadKnowledge() {
 
         try {
 
+            // =================================================
+            // 4. 把当前 PDF 文件名传给后端
+            // =================================================
             const result =
                 await window.AppAPI.post(
-                    '/api/knowledge/update'
+                    '/api/knowledge/update',
+                    {
+                        source_file: sourceFile
+                    }
                 );
 
-            if (!result.success) {
+            console.log(
+                '知识库更新接口返回：',
+                result
+            );
 
+            // =================================================
+            // 5. 判断更新结果
+            // =================================================
+            if (!result.success) {
                 throw new Error(
                     result.message ||
                     '知识库更新失败'
                 );
             }
 
+            // =================================================
+            // 6. 更新成功
+            // =================================================
             showToast(
-                '✅ 知识库更新完成！',
+                '✅ ' +
+                (result.message ||
+                    '知识库更新完成！'),
                 'success'
             );
 
-            // ✅ 重新加载列表
+            // =================================================
+            // 7. 重新读取当前 PDF 的知识库
+            // =================================================
             await loadKnowledge();
 
-            // ✅ 触发自定义事件，通知 app.js 刷新侧边栏
-            document.dispatchEvent(new CustomEvent('knowledgeUpdated'));
+            // =================================================
+            // 8. 通知其他页面知识库已经更新
+            // =================================================
+            document.dispatchEvent(
+                new CustomEvent(
+                    'knowledgeUpdated'
+                )
+            );
 
         } catch (error) {
 
@@ -1165,12 +1225,16 @@ async function loadKnowledge() {
             );
 
             showToast(
+                '❌ ' +
                 error.message,
                 'error'
             );
 
         } finally {
 
+            // =================================================
+            // 9. 恢复按钮
+            // =================================================
             button.disabled = false;
             button.textContent = oldText;
         }
@@ -1178,51 +1242,115 @@ async function loadKnowledge() {
 
 
     // =====================================================
-    // 打标签
+    // 给当前选中的 PDF 打工种标签
     // =====================================================
-
     async function tagArticles() {
 
+        // =================================================
+        // 1. 获取当前选中的 PDF
+        // =================================================
+        const currentPdfElement =
+            document.getElementById(
+                'current-pdf-name'
+            );
+
+        let sourceFile = '';
+
+        if (currentPdfElement) {
+            sourceFile =
+                currentPdfElement.textContent.trim();
+        }
+
+        console.log(
+            '准备打标签的 PDF：',
+            sourceFile
+        );
+
+        // =================================================
+        // 2. 检查是否选择 PDF
+        // =================================================
+        if (
+            !sourceFile ||
+            sourceFile === '未选择'
+        ) {
+            showToast(
+                '❌ 请先选择要打标签的 PDF',
+                'error'
+            );
+            return;
+        }
+
+        // =================================================
+        // 3. 找到打标签按钮
+        // =================================================
         const button =
             document.getElementById(
                 'tag-articles-btn'
             );
 
-        if (!button) {
-            return;
-        }
-
         const oldText =
-            button.textContent;
+            button
+                ? button.textContent
+                : '';
 
-        button.disabled = true;
-        button.textContent = '打标签中...';
+        if (button) {
+            button.disabled = true;
+            button.textContent = '打标签中...';
+        }
 
         try {
 
+            // =================================================
+            // 4. 把当前 PDF 传给后端
+            // =================================================
             const result =
                 await window.AppAPI.post(
-                    '/api/tag/articles'
+                    '/api/tag/articles',
+                    {
+                        source_file: sourceFile
+                    }
                 );
 
-            if (!result.success) {
+            console.log(
+                '打标签接口返回：',
+                result
+            );
 
+            // =================================================
+            // 5. 判断结果
+            // =================================================
+            if (!result.success) {
                 throw new Error(
                     result.message ||
                     '打标签失败'
                 );
             }
 
+            // =================================================
+            // 6. 成功
+            // =================================================
             showToast(
-                '✅ 打标签完成！',
+                '✅ ' +
+                (
+                    result.message ||
+                    '打标签完成！'
+                ),
                 'success'
             );
 
-            // 重新加载知识库（刷新列表）
+            // =================================================
+            // 7. 重新加载当前 PDF 的知识库
+            // =================================================
             await loadKnowledge();
 
-            // ✅ 触发自定义事件，通知 app.js 刷新侧边栏
-            document.dispatchEvent(new CustomEvent('knowledgeUpdated'));
+            // =================================================
+            // 8. 通知其他地方知识库已更新
+            // =================================================
+            document.dispatchEvent(
+                new CustomEvent(
+                    'knowledgeUpdated'
+                )
+            );
 
         } catch (error) {
 
@@ -1232,14 +1360,17 @@ async function loadKnowledge() {
             );
 
             showToast(
-                '❌ ' + error.message,
+                '❌ ' +
+                error.message,
                 'error'
             );
 
         } finally {
 
-            button.disabled = false;
-            button.textContent = oldText;
+            if (button) {
+                button.disabled = false;
+                button.textContent = oldText;
+            }
         }
     }
 
