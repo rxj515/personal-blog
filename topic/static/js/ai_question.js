@@ -1520,11 +1520,12 @@ const AIQuestion = {
             list.length === 0
         ) {
 
+            // ✅ 改动：colspan 从 11 改为 12（多了生成时间列）
             tbody.innerHTML = `
 
                 <tr>
                     <td
-                        colspan="11"
+                        colspan="12"
                         style="
                             text-align:center;
                             padding:40px;
@@ -1553,6 +1554,7 @@ const AIQuestion = {
             tr.dataset.index = index;
             tr.dataset.id = item.id || '';
 
+            // ✅ 改动：analysis 和删除按钮之间插入"生成时间"列
             tr.innerHTML = `
 
                 <td>${index + 1}</td>
@@ -1569,6 +1571,7 @@ const AIQuestion = {
                 <td>${item.plan_f || ""}</td>
                 <td>${item.answer || ""}</td>
                 <td>${item.analysis || ""}</td>
+                <td class="created-cell">${item.created_at || ""}</td>
                 <td>
                     <button 
                         class="btn-delete-row" 

@@ -1,8 +1,8 @@
 [
   {
-    "user_id": "python-4babca30afa3e766",
+    "user_id": "python-beb75b937714dece",
     "username": "admin",
-    "password_hash": "pbkdf2_sha256$600000$392a0577282825dd54a90972812bb3d4$Sh-zTviaC3u330Vqu1wU3wazLFrNIzrBWL6Tl6qtM9s",
+    "password_hash": "pbkdf2_sha256$600000$32009544f3c93f4498bcec18b2e5bd94$s2WD59HWYMxswVkd9VdWPR0lgIl7BfEPmY3-QycYFws",
     "role": "管理员",
     "enabled": true,
     "user_code": "admin",

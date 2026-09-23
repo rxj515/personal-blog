@@ -29,6 +29,9 @@ import uuid
 import hashlib
 from pathlib import Path
 
+# ✅ 新增：生成时间用
+from datetime import datetime
+
 import ai_client
 
 
@@ -607,14 +610,15 @@ def clean_ai_json(text):
 
 
 # ============================================================
-# 13. 验证题目（新增 point 字段保存）
+# 13. 验证题目（新增 point 字段保存 + 时间字段）
 # ============================================================
 
 def validate_question(
     text,
     article,
     expected_type,
-    point=None
+    point=None,
+    batch_id=None,              # ✅ 新增：批次号
 ):
 
     try:
@@ -971,11 +975,19 @@ def validate_question(
     if "id" not in question:
         question["id"] = str(uuid.uuid4())
 
+    # ✅ 新增：生成时间（三个字段）
+    now = datetime.now()
+    question["created_at"] = now.strftime("%Y-%m-%d %H:%M:%S")
+    question["created_date"] = now.strftime("%Y-%m-%d")
+    question["created_batch"] = (
+        batch_id or now.strftime("%Y%m%d_%H%M%S")
+    )
+
     return question
 
 
 # ============================================================
-# 14. 生成一道题（支持考点）
+# 14. 生成一道题（支持考点 + 批次号）
 # ============================================================
 
 def generate_one_question(
@@ -984,7 +996,8 @@ def generate_one_question(
     question_type,
     dept_info=None,
     point=None,
-    detail=None
+    detail=None,
+    batch_id=None,              # ✅ 新增：批次号
 ):
 
     for retry in range(
@@ -1017,7 +1030,8 @@ def generate_one_question(
                 raw_result,
                 article,
                 question_type,
-                point
+                point,
+                batch_id=batch_id,      # ✅ 透传
             )
 
             if question and dept_info:
@@ -1534,6 +1548,14 @@ def main(
     print(history_file.resolve())
 
     # ========================================================
+    # ✅ 新增：本次运行的批次号（整批题共用）
+    # ========================================================
+
+    BATCH_ID = datetime.now().strftime("%Y%m%d_%H%M%S")
+    print()
+    print(f"📦 本次批次号：{BATCH_ID}")
+
+    # ========================================================
     # 题型计划
     # ========================================================
 
@@ -1591,6 +1613,13 @@ def main(
             )
 
             history_questions = []
+
+    # ✅ 新增：给历史老题补默认时间字段，避免前端/导出缺字段
+    for q in history_questions:
+        if isinstance(q, dict):
+            q.setdefault("created_at", "")
+            q.setdefault("created_date", "")
+            q.setdefault("created_batch", "")
 
     print()
     print(
@@ -1769,7 +1798,8 @@ def main(
             content,
             current_type,
             point=candidate_point,
-            detail=candidate_detail
+            detail=candidate_detail,
+            batch_id=BATCH_ID,          # ✅ 传批次号
         )
 
         if question is None:
@@ -1823,6 +1853,8 @@ def main(
         print(f"正确答案：{question['answer']}")
         print(f"解析：{question['analysis']}")
         print(f"考点：{question.get('point', '')}")
+        print(f"生成时间：{question.get('created_at', '')}")     # ✅ 新增显示
+        print(f"批次号：{question.get('created_batch', '')}")     # ✅ 新增显示
         print(f"ID：{question.get('id', '无ID')}")
         print(
             "------------------------------------"

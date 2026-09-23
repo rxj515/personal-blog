@@ -100,12 +100,15 @@
                         <th class="col-option">F</th>
                         <th class="col-answer">答案</th>
                         <th class="col-analysis">解析</th>
+                        <!-- ✅ 新增：生成时间列 -->
+                        <th class="col-created">生成时间</th>
                         <th class="col-delete">操作</th>
                     </tr>
                 </thead>
                 <tbody id="question-list">
                     <tr>
-                        <td colspan="13" class="empty-cell">正在加载题库...</td>
+                        <!-- ✅ 改动：colspan 从 13 改为 14 -->
+                        <td colspan="14" class="empty-cell">正在加载题库...</td>
                     </tr>
                 </tbody>
             </table>

@@ -312,9 +312,10 @@ const QuestionBank = {
         if (!list) return;
 
 
+        // ✅ 改动：colspan 13 → 14
         list.innerHTML = `
             <tr>
-                <td colspan="13"
+                <td colspan="14"
                     class="empty-cell">
                     ⏳ 正在读取题库...
                 </td>
@@ -440,9 +441,10 @@ const QuestionBank = {
             this.filteredQuestions = [];
 
 
+            // ✅ 改动：colspan 13 → 14
             list.innerHTML = `
                 <tr>
-                    <td colspan="13"
+                    <td colspan="14"
                         class="empty-cell">
 
                         <div class="empty-state">
@@ -661,6 +663,22 @@ const QuestionBank = {
 
 
     // =====================================================
+    // ✅ 新增：获取生成时间
+    // 兼容 created_at / created_time / create_time
+    // =====================================================
+
+    getCreatedAt(q) {
+
+        return (
+            q.created_at ||
+            q.created_time ||
+            q.create_time ||
+            ''
+        );
+    },
+
+
+    // =====================================================
     // 更新总数
     // =====================================================
 
@@ -774,9 +792,10 @@ const QuestionBank = {
 
         if (!data.length) {
 
+            // ✅ 改动：colspan 13 → 14
             list.innerHTML = `
                 <tr>
-                    <td colspan="13"
+                    <td colspan="14"
                         class="empty-cell">
 
                         <div class="empty-state">
@@ -835,6 +854,10 @@ const QuestionBank = {
 
             analysis:
                 this.getAnalysis(q),
+
+            // ✅ 新增：生成时间
+            createdAt:
+                this.getCreatedAt(q),
 
             options:
                 [
@@ -945,6 +968,19 @@ const QuestionBank = {
                             ? esc(
                                 fields.analysis
                             )
+                            : '-'
+                    }
+                </td>
+
+
+                <!-- ✅ 新增：生成时间列 -->
+                <td
+                    class="created-cell"
+                    title="${esc(fields.createdAt)}"
+                >
+                    ${
+                        fields.createdAt
+                            ? esc(fields.createdAt)
                             : '-'
                     }
                 </td>

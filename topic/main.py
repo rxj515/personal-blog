@@ -2364,21 +2364,11 @@ async def generate_questions_stream(
                 random.shuffle(type_plan)
 
             # ----------------------------------------------------
-            # ✅ 去重键升级：带 point_hash
+            # ✅ 改动点：point_hash 直接用 generate_questions 里的，
+            #    不再重复定义一份（避免两边逻辑不同步）
             # ----------------------------------------------------
 
-            import hashlib
-            import re as _re
-
-            def point_hash(point):
-                p = str(point or "").strip()
-                p = _re.sub(
-                    r"[\s，。、；：！？,.;:!?（）()【】\[\]「」『』\"'`]",
-                    "", p
-                ).lower()
-                if not p:
-                    return "__whole__"
-                return hashlib.md5(p.encode("utf-8")).hexdigest()[:12]
+            point_hash = question_generator.point_hash
 
             # 读取历史题库
             history_file = question_generator.get_question_file(law_name, use_new=False)
@@ -2411,6 +2401,14 @@ async def generate_questions_stream(
             article_points_cache = {}
 
             new_questions_file = question_generator.get_question_file(law_name, use_new=True)
+
+            # ====================================================
+            # ✅ 新增：本次运行的批次号（整批题共用）
+            # ====================================================
+
+            from datetime import datetime as _dt
+            BATCH_ID = _dt.now().strftime("%Y%m%d_%H%M%S")
+            print(f"📦 本次批次号：{BATCH_ID}")
 
             # ====================================================
             # 循环生成
@@ -2471,6 +2469,7 @@ async def generate_questions_stream(
                     point_hash(candidate_point)
                 )
 
+                # ✅ 改动点：传入 batch_id=BATCH_ID
                 question = question_generator.generate_one_question(
                     article,
                     content,
@@ -2483,6 +2482,7 @@ async def generate_questions_stream(
                     },
                     point=candidate_point,
                     detail=candidate_detail,
+                    batch_id=BATCH_ID,
                 )
 
                 if question is None:
@@ -2568,7 +2568,6 @@ async def generate_questions_stream(
                 "message": f"AI流式出题失败：{e}"
             }
         )
-
 
 import re
 

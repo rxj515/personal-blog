@@ -506,7 +506,8 @@
 .question-table {
     width: 100%;
 
-    min-width: 1250px;  /* 从1150px增加到1250px，为删除列腾出空间 */
+    /* ✅ 从1250px增加到1400px，为生成时间列腾出空间 */
+    min-width: 1400px;
 
     table-layout: fixed;
 
@@ -515,7 +516,7 @@
 
 
 /* =====================================================
-   表格列宽（新增删除列）
+   表格列宽（新增删除列 + 生成时间列）
 ===================================================== */
 
 .col-index {
@@ -523,22 +524,28 @@
 }
 
 .col-question {
-    width: 24%;  /* 从28%调整为24% */
+    width: 22%;  /* ✅ 从24%调整为22%，给时间列腾空间 */
 }
 
 .col-option {
-    width: 6%;   /* 从7%调整为6% */
+    width: 6%;
 }
 
 .col-answer {
-    width: 60px;  /* 从65px调整为60px */
+    width: 60px;
 }
 
 .col-analysis {
     width: auto;
 }
 
-.col-delete {    /* 新增删除列 */
+/* ✅ 新增：生成时间列 */
+.col-created {
+    width: 150px;
+    min-width: 150px;
+}
+
+.col-delete {
     width: 70px;
     min-width: 70px;
 }
@@ -561,8 +568,8 @@
 
     border-bottom: 1px solid #e5e7eb;
 
-    text-align: center;      /* 新增：表头居中 */
-    vertical-align: middle;  /* 新增：表头垂直居中 */
+    text-align: center;
+    vertical-align: middle;
 }
 
 
@@ -608,6 +615,19 @@
     color: #334155;
 
     font-weight: 500;
+}
+
+
+/* =====================================================
+   生成时间单元格（防止折行）
+===================================================== */
+
+.question-table .created-cell {
+    white-space: nowrap;
+
+    color: #64748b;
+
+    font-size: 12px;
 }
 
 
@@ -671,17 +691,23 @@
         grid-template-columns: 1fr 1fr;
     }
 
-    /* 小屏幕下表格列宽调整 */
+    /* ✅ 小屏幕下表格列宽调整 */
     .question-table {
-        min-width: 1100px;
+        min-width: 1250px;
     }
 
     .col-question {
-        width: 20%;
+        width: 18%;
     }
 
     .col-option {
         width: 5%;
+    }
+
+    /* ✅ 新增：小屏时间列宽度 */
+    .col-created {
+        width: 130px;
+        min-width: 130px;
     }
 
     .col-delete {
@@ -739,17 +765,23 @@
         border-radius: 18px;
     }
 
-    /* 小屏幕下表格列宽进一步调整 */
+    /* ✅ 小屏幕下表格列宽进一步调整 */
     .question-table {
-        min-width: 900px;
+        min-width: 1050px;
     }
 
     .col-question {
-        width: 18%;
+        width: 16%;
     }
 
     .col-option {
         width: 4%;
+    }
+
+    /* ✅ 新增：小屏时间列宽度 */
+    .col-created {
+        width: 120px;
+        min-width: 120px;
     }
 
     .col-delete {

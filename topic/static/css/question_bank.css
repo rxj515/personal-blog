@@ -143,7 +143,10 @@
 
 .question-bank-table {
     width: 100%;
-    min-width: 1600px;  /* 从1500px增加到1600px，为删除列腾出空间 */
+
+    /* ✅ 改动：1600px → 1750px，为生成时间列腾出空间 */
+    min-width: 1750px;
+
     border-collapse: collapse;
     table-layout: fixed;
 }
@@ -195,24 +198,34 @@
     width: 80px;
 }
 
+/* ✅ 改动：300px → 280px，给时间列腾空间 */
 .col-title {
-    width: 300px;  /* 从330px调整为300px */
+    width: 280px;
 }
 
+/* ✅ 改动：110px → 100px */
 .col-option {
-    width: 110px;  /* 从120px调整为110px */
+    width: 100px;
 }
 
 .col-answer {
     width: 70px;
 }
 
+/* ✅ 改动：260px → 240px，给时间列腾空间 */
 .col-analysis {
-    width: 260px;  /* 从300px调整为260px */
+    width: 240px;
+}
+
+/* ✅ 新增：生成时间列 */
+.col-created {
+    width: 150px;
+    min-width: 150px;
+    white-space: nowrap;
 }
 
 .col-delete {
-    width: 70px;   /* 新增删除列 */
+    width: 70px;
     min-width: 70px;
     text-align: center;
 }
@@ -256,6 +269,13 @@
 .analysis-cell {
     color: #64748b !important;
     word-break: break-word;
+}
+
+/* ✅ 新增：生成时间单元格（防止折行） */
+.created-cell {
+    color: #64748b !important;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 /* =========================================================
@@ -559,8 +579,9 @@
         justify-content: center;
     }
     
+    /* ✅ 改动：1200px → 1350px，加了生成时间列 */
     .question-bank-table {
-        min-width: 1200px;
+        min-width: 1350px;
     }
     
     .col-delete {
@@ -584,6 +605,12 @@
     .col-analysis {
         width: 150px;
     }
+
+    /* ✅ 新增：小屏时间列宽度 */
+    .col-created {
+        width: 130px;
+        min-width: 130px;
+    }
 }
 
 @media (max-width: 480px) {
@@ -591,8 +618,9 @@
         padding: 12px;
     }
     
+    /* ✅ 改动：900px → 1050px，加了生成时间列 */
     .question-bank-table {
-        min-width: 900px;
+        min-width: 1050px;
     }
     
     .col-title {
@@ -615,5 +643,11 @@
     .btn-delete-row {
         padding: 2px 6px;
         font-size: 10px;
+    }
+
+    /* ✅ 新增：超小屏时间列宽度 */
+    .col-created {
+        width: 110px;
+        min-width: 110px;
     }
 }
