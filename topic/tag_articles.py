@@ -93,18 +93,124 @@ BATCH_SIZE = 15
 
 
 # ============================================================
-# 3. 全局进度变量
+# 3. ⭐ 全局进度（文件存储，兼容多 worker / --reload）
 # ============================================================
 
-tag_progress = {
+TAG_PROGRESS_FILE = BASE_DIR / "data" / "tag_progress.json"
+
+_DEFAULT_TAG_PROGRESS = {
     "total": 0,
     "processed": 0,
-    "status": "idle",
+    "status": "idle",        # idle | running | done | error
     "message": "",
     "source_file": "",
-    "current_article": ""
+    "current_article": "",
+    "current_pdf": "",
+    "overall_percent": 0,
+    "stage": "",
+    "stage_percent": 0,
+    "part_total": 0,
+    "part_processed": 0,
+    "page_total": 0,
+    "page_processed": 0,
 }
 
+tag_progress = dict(_DEFAULT_TAG_PROGRESS)
+
+
+def _save_tag_progress():
+    try:
+        TAG_PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        TAG_PROGRESS_FILE.write_text(
+            json.dumps(tag_progress, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        print(f"⚠️ 写打标签进度文件失败：{e}")
+
+
+def _load_tag_progress():
+    global tag_progress
+    try:
+        if TAG_PROGRESS_FILE.exists():
+            data = json.loads(TAG_PROGRESS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                for k, v in _DEFAULT_TAG_PROGRESS.items():
+                    data.setdefault(k, v)
+                tag_progress.clear()
+                tag_progress.update(data)
+                return
+    except Exception as e:
+        print(f"⚠️ 读打标签进度文件失败：{e}")
+
+    tag_progress.clear()
+    tag_progress.update(_DEFAULT_TAG_PROGRESS)
+
+
+def get_tag_progress():
+    """供接口调用：每次从文件读最新"""
+    _load_tag_progress()
+    return dict(tag_progress)
+
+
+def reset_tag_progress(source_file=""):
+    """重置进度并写文件"""
+    tag_progress.clear()
+    tag_progress.update(dict(_DEFAULT_TAG_PROGRESS))
+    tag_progress["status"] = "running"
+    tag_progress["message"] = (
+        f"准备给 {source_file} 打标签" if source_file else "准备打标签"
+    )
+    tag_progress["source_file"] = source_file or ""
+    tag_progress["stage"] = "准备"
+    _save_tag_progress()
+
+
+def set_tag_progress(stage, stage_percent, message="", **extra):
+    """
+    统一设置进度（自动写文件）。
+
+    阶段权重：
+        准备          → 0%   ~ 5%
+        AI 打标签     → 5%   ~ 95%
+        后处理        → 95%  ~ 100%
+    """
+    stage_percent = max(0.0, min(100.0, float(stage_percent)))
+
+    if stage == "准备":
+        overall = stage_percent * 0.05
+    elif stage == "AI 打标签":
+        overall = 5 + stage_percent * 0.90
+    elif stage == "后处理":
+        overall = 95 + stage_percent * 0.05
+    else:
+        overall = stage_percent
+
+    tag_progress["stage"] = stage
+    tag_progress["stage_percent"] = round(stage_percent, 1)
+    tag_progress["overall_percent"] = round(min(100.0, overall), 1)
+    if message:
+        tag_progress["message"] = message
+    for k, v in extra.items():
+        tag_progress[k] = v
+
+    _save_tag_progress()
+
+
+def set_tag_progress_field(key, value):
+    """单字段更新（自动写文件）"""
+    tag_progress[key] = value
+    _save_tag_progress()
+
+
+def get_progress():
+    """兼容旧接口"""
+    return get_tag_progress()
+
+
+# ============================================================
+# 4. AI 调用
+# ============================================================
 
 def ai_call(prompt):
     """调用 AI 接口"""
@@ -135,12 +241,8 @@ def ai_call(prompt):
         return None
 
 
-def get_progress():
-    return tag_progress
-
-
 # ============================================================
-# 4. 长文本切段
+# 5. 长文本切段
 # ============================================================
 
 def split_long_text(text, max_len=SEGMENT_MAX_LEN):
@@ -181,12 +283,11 @@ def split_long_text(text, max_len=SEGMENT_MAX_LEN):
 
 
 # ============================================================
-# 5. ✅ 构建 Prompt（节点名清单喂给 AI）
+# 6. ✅ 构建 Prompt（节点名清单喂给 AI）
 # ============================================================
 
 def build_node_list_text():
     """把节点名拼成一段文本，用于 prompt"""
-    # 每行放 8 个，避免太长
     lines = []
     for i in range(0, len(ALL_NODES), 8):
         chunk = ALL_NODES[i:i + 8]
@@ -288,24 +389,20 @@ def build_prompt_for_segment(item, segment, segment_index, total_segments):
 
 
 # ============================================================
-# 6. 解析 AI 返回
+# 7. 解析 AI 返回
 # ============================================================
 
 def match_node(part):
     """
     从 AI 返回的一段文字里，匹配出合法的节点名。
-    - 优先完全匹配
-    - 其次子串匹配
     """
     part = part.strip()
     if not part:
         return None
 
-    # 完全匹配
     if part in VALID_NODES:
         return part
 
-    # 子串匹配：找最长的那个
     best = None
     for node in VALID_NODES:
         if node in part:
@@ -364,7 +461,6 @@ def parse_ai_response_for_batch(result, batch_data):
                         results[idx].append(tag)
                 break
 
-    # 补漏
     for i, idx, item, segments in batch_data:
         if idx not in results:
             results[idx] = ["鑫隆煤业"]
@@ -395,7 +491,7 @@ def parse_segment_tags(result):
 
 
 # ============================================================
-# 7. 长条文处理
+# 8. 长条文处理
 # ============================================================
 
 def process_long_article(idx, item):
@@ -429,7 +525,7 @@ def process_long_article(idx, item):
 
 
 # ============================================================
-# 8. 处理单个知识库
+# 9. 处理单个知识库
 # ============================================================
 
 def process_single_knowledge(json_path, knowledge_name):
@@ -488,10 +584,15 @@ def process_single_knowledge(json_path, knowledge_name):
         for idx in long_indices:
             try:
                 # ⭐ 更新当前处理的条文
-                tag_progress["current_article"] = articles[idx].get("article", "")
-                tag_progress["message"] = (
-                    f"[{knowledge_name}] 长条文："
-                    f"{articles[idx].get('article', '')}"
+                set_tag_progress_field(
+                    "current_article",
+                    articles[idx].get("article", "")
+                )
+                set_tag_progress(
+                    "AI 打标签",
+                    (processed_count / max(1, total_articles)) * 100,
+                    f"[{knowledge_name}] 长条文：{articles[idx].get('article', '')}",
+                    current_pdf=knowledge_name,
                 )
 
                 tags = process_long_article(idx, articles[idx])
@@ -502,9 +603,13 @@ def process_single_knowledge(json_path, knowledge_name):
 
                 processed_count += 1
 
-                # ⭐ 更新全局进度
-                tag_progress["processed"] = (
-                    tag_progress.get("processed", 0) + 1
+                # ⭐ 更新进度
+                set_tag_progress(
+                    "AI 打标签",
+                    (processed_count / max(1, total_articles)) * 100,
+                    f"[{knowledge_name}] 已完成 {processed_count}/{total_articles} 条",
+                    current_pdf=knowledge_name,
+                    processed=processed_count,
                 )
 
                 print(f"   ✅ 已完成 {processed_count}/{total_articles} 条")
@@ -517,9 +622,14 @@ def process_single_knowledge(json_path, knowledge_name):
                 articles[idx]["dept_type_name"] = ["鑫隆煤业"]
                 articles[idx]["dept_type_name_str"] = "鑫隆煤业"
 
-                # ⭐ 失败也要推进进度
-                tag_progress["processed"] = (
-                    tag_progress.get("processed", 0) + 1
+                processed_count += 1
+
+                set_tag_progress(
+                    "AI 打标签",
+                    (processed_count / max(1, total_articles)) * 100,
+                    f"[{knowledge_name}] 已完成 {processed_count}/{total_articles} 条",
+                    current_pdf=knowledge_name,
+                    processed=processed_count,
                 )
 
         # -----------------------------------------------------
@@ -541,10 +651,11 @@ def process_single_knowledge(json_path, knowledge_name):
                     segments = [item.get("content", "")]
                     batch_data.append((i, idx, item, segments))
 
-                # ⭐ 更新当前批次信息
-                tag_progress["message"] = (
-                    f"[{knowledge_name}] 短条文批次 "
-                    f"{batch_idx + 1}/{len(batches)}"
+                set_tag_progress(
+                    "AI 打标签",
+                    (processed_count / max(1, total_articles)) * 100,
+                    f"[{knowledge_name}] 短条文批次 {batch_idx + 1}/{len(batches)}",
+                    current_pdf=knowledge_name,
                 )
 
                 prompt = build_prompt_for_batch(batch_data)
@@ -561,9 +672,12 @@ def process_single_knowledge(json_path, knowledge_name):
 
                 processed_count += len(batch_indices)
 
-                # ⭐ 更新全局进度
-                tag_progress["processed"] = (
-                    tag_progress.get("processed", 0) + len(batch_indices)
+                set_tag_progress(
+                    "AI 打标签",
+                    (processed_count / max(1, total_articles)) * 100,
+                    f"[{knowledge_name}] 已完成 {processed_count}/{total_articles} 条",
+                    current_pdf=knowledge_name,
+                    processed=processed_count,
                 )
 
                 print(f"   ✅ 已完成 {processed_count}/{total_articles} 条")
@@ -573,9 +687,14 @@ def process_single_knowledge(json_path, knowledge_name):
             except Exception as e:
                 print(f"   ❌ 批次 {batch_idx + 1} 处理失败：{e}")
 
-                # ⭐ 失败也要推进进度，否则会卡住
-                tag_progress["processed"] = (
-                    tag_progress.get("processed", 0) + len(batch_indices)
+                processed_count += len(batch_indices)
+
+                set_tag_progress(
+                    "AI 打标签",
+                    (processed_count / max(1, total_articles)) * 100,
+                    f"[{knowledge_name}] 已完成 {processed_count}/{total_articles} 条",
+                    current_pdf=knowledge_name,
+                    processed=processed_count,
                 )
 
         # -----------------------------------------------------
@@ -588,7 +707,6 @@ def process_single_knowledge(json_path, knowledge_name):
                 if item.get("dept_type_name"):
                     tagged_count += 1
 
-                    # 兼容旧数据：字符串 → 列表
                     if isinstance(item["dept_type_name"], str):
                         item["dept_type_name"] = [
                             x.strip()
@@ -596,7 +714,6 @@ def process_single_knowledge(json_path, knowledge_name):
                             if x.strip()
                         ]
 
-                    # 清洗：去掉不合法的节点名
                     if isinstance(item["dept_type_name"], list):
                         item["dept_type_name"] = [
                             n for n in item["dept_type_name"]
@@ -610,7 +727,6 @@ def process_single_knowledge(json_path, knowledge_name):
                     item["dept_type_name_str"] = "鑫隆煤业"
                     tagged_count += 1
 
-        # 顺便：删掉旧字段 dept_category（如果存在）
         for item in articles:
             if isinstance(item, dict) and "dept_category" in item:
                 del item["dept_category"]
@@ -630,31 +746,15 @@ def process_single_knowledge(json_path, knowledge_name):
 
 
 # ============================================================
-# 9. 主函数
+# 10. 主函数
 # ============================================================
 
 def main(source_file=None):
     """
     打标签主函数
-
-    source_file:
-        None
-            → 处理全部知识库
-
-        "山西统筹煤炭安全新规通知.pdf"
-            → 只处理当前指定 PDF 对应的知识库
     """
-
-    global tag_progress
-
-    tag_progress = {
-        "total": 0,
-        "processed": 0,
-        "status": "running",
-        "message": "开始打标签...",
-        "source_file": source_file or "",
-        "current_article": ""
-    }
+    # ---------- 重置进度 ----------
+    reset_tag_progress(source_file or "")
 
     print()
     print("=" * 60)
@@ -666,14 +766,9 @@ def main(source_file=None):
     # ========================================================
 
     if not ALL_NODES:
-
-        print(
-            "❌ 没有读到任何树节点，检查 Excel 路径"
-        )
-
-        tag_progress["status"] = "error"
-        tag_progress["message"] = "没有读到树节点"
-
+        print("❌ 没有读到任何树节点，检查 Excel 路径")
+        set_tag_progress_field("status", "error")
+        set_tag_progress_field("message", "没有读到树节点")
         return {
             "success": False,
             "error": "没有读到树节点"
@@ -684,21 +779,11 @@ def main(source_file=None):
     # ========================================================
 
     try:
-
         if not KNOWLEDGE_DIR.exists():
-
-            message = (
-                f"知识库目录不存在："
-                f"{KNOWLEDGE_DIR}"
-            )
-
-            print(
-                f"❌ {message}"
-            )
-
-            tag_progress["status"] = "error"
-            tag_progress["message"] = message
-
+            message = f"知识库目录不存在：{KNOWLEDGE_DIR}"
+            print(f"❌ {message}")
+            set_tag_progress_field("status", "error")
+            set_tag_progress_field("message", message)
             return {
                 "success": False,
                 "error": message
@@ -710,224 +795,97 @@ def main(source_file=None):
 
         knowledge_files = []
 
-        # ====================================================
-        # 情况 A：
-        # 指定了 source_file
-        #
-        # 例如：
-        #
-        # 山西统筹煤炭安全新规通知.pdf
-        #
-        # 只处理：
-        #
-        # data/knowledge/
-        #     山西统筹煤炭安全新规通知/
-        #         articles.json
-        # ====================================================
-
         if source_file:
-
-            source_file = str(
-                source_file
-            ).strip()
+            source_file = str(source_file).strip()
 
             print()
             print("=" * 60)
             print("本次为【单 PDF 打标签】")
-            print(
-                f"当前 PDF：{source_file}"
-            )
+            print(f"当前 PDF：{source_file}")
             print("不会处理其他 PDF")
             print("=" * 60)
 
-            # ------------------------------------------------
-            # 去掉 .pdf 后缀
-            # ------------------------------------------------
-
             source_name = source_file
-
             if source_name.lower().endswith(".pdf"):
                 source_name = source_name[:-4]
-
             source_name = source_name.strip()
 
-            print(
-                f"对应知识库目录名：{source_name}"
-            )
+            print(f"对应知识库目录名：{source_name}")
 
-            # ------------------------------------------------
-            # 先精确匹配
-            # ------------------------------------------------
-
-            target_dir = (
-                KNOWLEDGE_DIR /
-                source_name
-            )
-
-            json_file = (
-                target_dir /
-                "articles.json"
-            )
-
-            # ------------------------------------------------
-            # 如果精确匹配不存在
-            # 再尝试模糊匹配
-            # ------------------------------------------------
+            target_dir = KNOWLEDGE_DIR / source_name
+            json_file = target_dir / "articles.json"
 
             if not json_file.exists():
-
                 print()
-                print(
-                    "⚠️ 精确匹配没有找到，"
-                    "开始搜索知识库目录..."
-                )
+                print("⚠️ 精确匹配没有找到，开始搜索知识库目录...")
 
                 target_dir = None
 
-                for dir_path in sorted(
-                    KNOWLEDGE_DIR.iterdir()
-                ):
-
+                for dir_path in sorted(KNOWLEDGE_DIR.iterdir()):
                     if not dir_path.is_dir():
                         continue
-
-                    if (
-                        dir_path.name ==
-                        source_name
-                    ):
+                    if dir_path.name == source_name:
                         target_dir = dir_path
                         break
-
-                    if (
-                        source_name in
-                        dir_path.name
-                    ):
+                    if source_name in dir_path.name:
                         target_dir = dir_path
                         break
 
                 if target_dir:
+                    json_file = target_dir / "articles.json"
 
-                    json_file = (
-                        target_dir /
-                        "articles.json"
-                    )
-
-            # ------------------------------------------------
-            # 找不到
-            # ------------------------------------------------
-
-            if (
-                not target_dir
-                or not json_file.exists()
-            ):
-
+            if not target_dir or not json_file.exists():
                 print()
-                print(
-                    "❌ 没有找到当前 PDF 对应的知识库"
-                )
+                print("❌ 没有找到当前 PDF 对应的知识库")
+                print(f"PDF：{source_file}")
+                print(f"查找目录：{KNOWLEDGE_DIR}")
 
-                print(
-                    f"PDF：{source_file}"
-                )
-
-                print(
-                    f"查找目录：{KNOWLEDGE_DIR}"
-                )
-
-                tag_progress["status"] = "error"
-
-                tag_progress["message"] = (
-                    f"没有找到知识库："
-                    f"{source_file}"
-                )
+                set_tag_progress_field("status", "error")
+                set_tag_progress_field("message", f"没有找到知识库：{source_file}")
 
                 return {
                     "success": False,
-                    "error": (
-                        f"没有找到知识库："
-                        f"{source_file}"
-                    )
+                    "error": f"没有找到知识库：{source_file}"
                 }
 
-            # ------------------------------------------------
-            # 加入处理列表
-            # ------------------------------------------------
-
-            knowledge_files.append(
-                (
-                    json_file,
-                    target_dir.name
-                )
-            )
+            knowledge_files.append((json_file, target_dir.name))
 
             print()
-            print(
-                "✅ 已找到当前 PDF 对应知识库："
-            )
-
-            print(
-                f"   {json_file}"
-            )
-
-        # ====================================================
-        # 情况 B：
-        # 没有指定 source_file
-        #
-        # 保持原来的全部处理逻辑
-        # ====================================================
+            print("✅ 已找到当前 PDF 对应知识库：")
+            print(f"   {json_file}")
 
         else:
-
             print()
             print("=" * 60)
             print("本次为【全部知识库打标签】")
             print("未指定 PDF，将处理所有知识库")
             print("=" * 60)
 
-            for dir_path in sorted(
-                KNOWLEDGE_DIR.iterdir()
-            ):
-
+            for dir_path in sorted(KNOWLEDGE_DIR.iterdir()):
                 if not dir_path.is_dir():
                     continue
 
-                json_file = (
-                    dir_path /
-                    "articles.json"
-                )
-
+                json_file = dir_path / "articles.json"
                 if not json_file.exists():
                     continue
 
-                knowledge_files.append(
-                    (
-                        json_file,
-                        dir_path.name
-                    )
-                )
+                knowledge_files.append((json_file, dir_path.name))
 
         # ====================================================
         # 4. 检查最终要处理的数量
         # ====================================================
 
         if not knowledge_files:
-
             print()
-            print(
-                "❌ 没有找到需要处理的知识库"
-            )
-
-            tag_progress["status"] = "error"
-            tag_progress["message"] = (
-                "没有找到需要处理的知识库"
-            )
-
+            print("❌ 没有找到需要处理的知识库")
+            set_tag_progress_field("status", "error")
+            set_tag_progress_field("message", "没有找到需要处理的知识库")
             return {
                 "success": False,
                 "error": "没有找到需要处理的知识库"
             }
 
-        # ⭐ 新增：统计所有知识库需要打标签的总条数
+        # 统计总条数
         total_articles_all = 0
         for json_file, _ in knowledge_files:
             try:
@@ -940,28 +898,15 @@ def main(source_file=None):
             except Exception:
                 pass
 
-        tag_progress["total"] = total_articles_all
-        tag_progress["processed"] = 0
+        set_tag_progress_field("total", total_articles_all)
+        set_tag_progress_field("processed", 0)
 
         print()
-        print(
-            f"本次准备处理 "
-            f"{len(knowledge_files)} 个知识库"
-        )
+        print(f"本次准备处理 {len(knowledge_files)} 个知识库")
         print(f"总法条数：{total_articles_all}")
 
-        for index, (
-            json_file,
-            knowledge_name
-        ) in enumerate(
-            knowledge_files,
-            start=1
-        ):
-
-            print(
-                f"{index}. "
-                f"{knowledge_name}"
-            )
+        for index, (json_file, knowledge_name) in enumerate(knowledge_files, start=1):
+            print(f"{index}. {knowledge_name}")
 
         # ====================================================
         # 5. 开始处理
@@ -971,73 +916,32 @@ def main(source_file=None):
         total_success = 0
         total_failed = 0
 
-        for index, (
-            json_file,
-            knowledge_name
-        ) in enumerate(
-            knowledge_files,
-            start=1
-        ):
-
+        for index, (json_file, knowledge_name) in enumerate(knowledge_files, start=1):
             print()
             print("=" * 60)
 
             if source_file:
-
-                print(
-                    f"正在处理当前 PDF "
-                    f"[{index}/{len(knowledge_files)}]"
-                )
-
+                print(f"正在处理当前 PDF [{index}/{len(knowledge_files)}]")
             else:
+                print(f"正在处理知识库 [{index}/{len(knowledge_files)}]")
 
-                print(
-                    f"正在处理知识库 "
-                    f"[{index}/{len(knowledge_files)}]"
-                )
-
-            print(
-                f"知识库：{knowledge_name}"
-            )
-
-            print(
-                f"文件：{json_file}"
-            )
-
+            print(f"知识库：{knowledge_name}")
+            print(f"文件：{json_file}")
             print("=" * 60)
 
             try:
-
-                result = process_single_knowledge(
-                    json_file,
-                    knowledge_name
-                )
+                result = process_single_knowledge(json_file, knowledge_name)
 
                 if result.get("success"):
-
                     total_success += 1
-
-                    total_processed += (
-                        result.get(
-                            "count",
-                            0
-                        )
-                    )
-
+                    total_processed += result.get("count", 0)
                 else:
-
                     total_failed += 1
 
             except Exception as e:
-
                 total_failed += 1
-
-                print(
-                    f"❌ 知识库处理失败：{e}"
-                )
-
+                print(f"❌ 知识库处理失败：{e}")
                 import traceback
-
                 traceback.print_exc()
 
         # ====================================================
@@ -1048,55 +952,34 @@ def main(source_file=None):
         print("=" * 60)
 
         if source_file:
-
-            print(
-                "✅ 当前 PDF 打标签完成！"
-            )
-
+            print("✅ 当前 PDF 打标签完成！")
         else:
-
-            print(
-                "✅ 全部知识库打标签完成！"
-            )
+            print("✅ 全部知识库打标签完成！")
 
         print("=" * 60)
-
-        print(
-            f"   📊 成功处理："
-            f"{total_success} 个知识库"
-        )
-
-        print(
-            f"   📊 处理失败："
-            f"{total_failed} 个知识库"
-        )
-
-        print(
-            f"   📊 共打标签："
-            f"{total_processed} 条法条"
-        )
-
+        print(f"   📊 成功处理：{total_success} 个知识库")
+        print(f"   📊 处理失败：{total_failed} 个知识库")
+        print(f"   📊 共打标签：{total_processed} 条法条")
         print("=" * 60)
 
         # ⭐ 标记完成
+        _load_tag_progress()
         tag_progress["status"] = "done"
         tag_progress["processed"] = tag_progress.get("total", total_processed)
+        tag_progress["overall_percent"] = 100
+        tag_progress["stage_percent"] = 100
+        tag_progress["stage"] = "后处理"
 
         if source_file:
-
             tag_progress["message"] = (
-                f"✅ {source_file} "
-                f"打标签完成！"
-                f"共 {total_processed} 条"
+                f"✅ {source_file} 打标签完成！共 {total_processed} 条"
             )
-
         else:
-
             tag_progress["message"] = (
-                f"✅ 全部完成！"
-                f"已为 {total_processed} "
-                f"条法条打上树节点标签"
+                f"✅ 全部完成！已为 {total_processed} 条法条打上树节点标签"
             )
+
+        _save_tag_progress()
 
         return {
             "success": True,
@@ -1106,19 +989,11 @@ def main(source_file=None):
         }
 
     except Exception as e:
+        set_tag_progress_field("status", "error")
+        set_tag_progress_field("message", f"❌ 打标签失败：{str(e)}")
 
-        tag_progress["status"] = "error"
-
-        tag_progress["message"] = (
-            f"❌ 打标签失败：{str(e)}"
-        )
-
-        print(
-            f"❌ 打标签失败：{e}"
-        )
-
+        print(f"❌ 打标签失败：{e}")
         import traceback
-
         traceback.print_exc()
 
         return {
@@ -1133,27 +1008,11 @@ def main(source_file=None):
 # ============================================================
 
 if __name__ == "__main__":
-
     import sys
 
     source_file = None
 
-    # --------------------------------------------------------
-    # 命令行：
-    #
-    # python tag_articles.py
-    #
-    # → 全部知识库打标签
-    #
-    #
-    # python tag_articles.py xxx.pdf
-    #
-    # → 只给指定 PDF 打标签
-    # --------------------------------------------------------
-
     if len(sys.argv) > 1:
         source_file = sys.argv[1]
 
-    main(
-        source_file=source_file
-    )
+    main(source_file=source_file)

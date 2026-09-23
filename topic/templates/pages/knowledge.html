@@ -36,11 +36,24 @@
                     <input type="file" id="pdfFileInput" accept=".pdf" multiple style="display:none;">
                     <button class="btn-sm btn-upload" onclick="document.getElementById('pdfFileInput').click()">选择文件</button>
                 </div>
+
+                <!-- ✅ 上传进度区（带真实进度 + 勿刷新提示） -->
                 <div id="uploadProgress" style="display:none; margin-top: 10px;">
+
                     <div style="width:100%;height:6px;background:#e9ecef;border-radius:4px;overflow:hidden;">
                         <div id="progressFill" style="width:0%;height:100%;background:#007bff;border-radius:4px;transition:width 0.3s;"></div>
                     </div>
-                    <span id="uploadStatus" style="font-size:12px;color:#666;">上传中...</span>
+
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+                        <span id="uploadStatus" style="font-size:12px;color:#666;">上传中...</span>
+                        <span id="uploadPercent" style="font-size:12px;color:#2563eb;font-weight:600;">0%</span>
+                    </div>
+
+                    <div id="uploadWarning"
+                         style="margin-top:8px;padding:8px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:12px;color:#c2410c;">
+                        ⚠️ 正在上传文件，请勿刷新页面或关闭浏览器，否则上传会中断。
+                    </div>
+
                 </div>
             </div>
 
@@ -104,40 +117,64 @@
 
     </div>
 
-        <!-- 🏷️ 打标签进度浮层 -->
-        <div id="tagProgressOverlay" class="task-progress-overlay" data-theme="tag" style="display:none;">
-            <div class="task-progress-card" id="tagProgressCard">
-                <div class="task-progress-title">
-                    <span><span class="task-title-icon">🏷️</span>正在打标签</span>
-                    <button class="task-progress-close" id="tagProgressClose" style="display:none;">×</button>
-                </div>
-                <div class="task-progress-bar-wrap">
-                    <div class="task-progress-bar" id="tagProgressBar" style="width:0%;"></div>
-                </div>
-                <div class="task-progress-info">
-                    <span class="task-progress-percent" id="tagProgressPercent">0%</span>
-                    <span id="tagProgressCount">0 / 0</span>
-                </div>
-                <div class="task-progress-message" id="tagProgressMessage">准备中...</div>
+    <!-- 🏷️ 打标签进度浮层 -->
+    <div id="tagProgressOverlay" class="task-progress-overlay" data-theme="tag" style="display:none;">
+        <div class="task-progress-card" id="tagProgressCard">
+            <div class="task-progress-title">
+                <span><span class="task-title-icon">🏷️</span>正在打标签</span>
+                <button class="task-progress-close" id="tagProgressClose" style="display:none;">×</button>
+            </div>
+            <div class="task-progress-bar-wrap">
+                <div class="task-progress-bar" id="tagProgressBar" style="width:0%;"></div>
+            </div>
+            <div class="task-progress-info">
+                <span class="task-progress-percent" id="tagProgressPercent">0%</span>
+                <span id="tagProgressCount">0 / 0</span>
+            </div>
+            <div class="task-progress-message" id="tagProgressMessage">准备中...</div>
+
+            <!-- ✅ 新增：耗时 -->
+            <div id="tagProgressElapsed"
+                 style="margin-top:8px;font-size:12px;color:#64748b;text-align:right;">
+                已耗时 0 秒
+            </div>
+
+            <!-- ✅ 新增：警告 -->
+            <div id="tagProgressWarning"
+                 style="margin-top:10px;padding:8px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:12px;color:#c2410c;">
+                ⚠️ 任务正在后台执行，请勿刷新或关闭页面，否则会中断。
             </div>
         </div>
-    
-        <!-- 🔄 更新知识库进度浮层 -->
-        <div id="updateProgressOverlay" class="task-progress-overlay" data-theme="update" style="display:none;">
-            <div class="task-progress-card" id="updateProgressCard">
-                <div class="task-progress-title">
-                    <span><span class="task-title-icon">🔄</span>正在更新知识库</span>
-                    <button class="task-progress-close" id="updateProgressClose" style="display:none;">×</button>
-                </div>
-                <div class="task-progress-bar-wrap">
-                    <div class="task-progress-bar" id="updateProgressBar" style="width:0%;"></div>
-                </div>
-                <div class="task-progress-info">
-                    <span class="task-progress-percent" id="updateProgressPercent">0%</span>
-                    <span id="updateProgressCount">0 / 0</span>
-                </div>
-                <div class="task-progress-message" id="updateProgressMessage">准备中...</div>
+    </div>
+
+    <!-- 🔄 更新知识库进度浮层 -->
+    <div id="updateProgressOverlay" class="task-progress-overlay" data-theme="update" style="display:none;">
+        <div class="task-progress-card" id="updateProgressCard">
+            <div class="task-progress-title">
+                <span><span class="task-title-icon">🔄</span>正在更新知识库</span>
+                <button class="task-progress-close" id="updateProgressClose" style="display:none;">×</button>
+            </div>
+            <div class="task-progress-bar-wrap">
+                <div class="task-progress-bar" id="updateProgressBar" style="width:0%;"></div>
+            </div>
+            <div class="task-progress-info">
+                <span class="task-progress-percent" id="updateProgressPercent">0%</span>
+                <span id="updateProgressCount">0 / 0</span>
+            </div>
+            <div class="task-progress-message" id="updateProgressMessage">准备中...</div>
+
+            <!-- ✅ 新增：耗时 -->
+            <div id="updateProgressElapsed"
+                 style="margin-top:8px;font-size:12px;color:#64748b;text-align:right;">
+                已耗时 0 秒
+            </div>
+
+            <!-- ✅ 新增：警告 -->
+            <div id="updateProgressWarning"
+                 style="margin-top:10px;padding:8px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;font-size:12px;color:#c2410c;">
+                ⚠️ 任务正在后台执行，请勿刷新或关闭页面，否则会中断。
             </div>
         </div>
+    </div>
 
 </div>

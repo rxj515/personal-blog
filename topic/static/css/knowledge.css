@@ -613,7 +613,6 @@
 
 /* =====================================================
    任务进度浮层（打标签 / 更新知识库 共用）
-   —— 新增部分
 ===================================================== */
 
 /* 遮罩层 */
@@ -732,6 +731,32 @@
     word-break: break-all;
 }
 
+/* =====================================================
+   ✅ 新增：耗时显示
+==================================================== */
+
+.task-progress-elapsed {
+    margin-top: 8px;
+    font-size: 12px;
+    color: #64748b;
+    text-align: right;
+}
+
+/* =====================================================
+   ✅ 新增：请勿刷新警告
+==================================================== */
+
+.task-progress-warning {
+    margin-top: 10px;
+    padding: 8px 12px;
+    background: #fff7ed;
+    border: 1px solid #fed7aa;
+    border-radius: 8px;
+    font-size: 12px;
+    color: #c2410c;
+    line-height: 1.6;
+}
+
 /* 完成状态 */
 .task-progress-card.is-done .task-progress-bar {
     background: linear-gradient(90deg, #10b981, #34d399) !important;
@@ -751,5 +776,9 @@
 
     .task-progress-title {
         font-size: 15px;
+    }
+
+    .task-progress-elapsed {
+        text-align: left;
     }
 }

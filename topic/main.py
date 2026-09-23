@@ -1786,21 +1786,9 @@ def system_info():
     }
 
 
-# ============================================================
-# 24. 更新法规知识库
-#
-# POST /api/knowledge/update
-#
-# ============================================================
 from fastapi import Request
 import threading
 
-
-# ============================================================
-# 24. 更新法规知识库
-#
-# POST /api/knowledge/update
-# ============================================================
 
 @app.post("/api/knowledge/update")
 async def update_knowledge(request: Request):
@@ -1810,114 +1798,63 @@ async def update_knowledge(request: Request):
         print("开始更新法规知识库")
         print("=" * 60)
 
-        # =================================================
-        # 1. 获取前端请求数据
-        # =================================================
-
         source_file = None
-
-        # 读取 Content-Type
         content_type = request.headers.get("content-type", "")
 
         print(f"请求 Content-Type：{content_type}")
 
-        # -------------------------------------------------
-        # 情况一：前端发送 JSON
-        # -------------------------------------------------
         if "application/json" in content_type:
             try:
                 data = await request.json()
-
                 print(f"收到 JSON 数据：{data}")
-
                 if isinstance(data, dict):
                     source_file = data.get("source_file")
-
             except Exception as e:
                 print(f"JSON 读取失败：{e}")
 
-        # -------------------------------------------------
-        # 情况二：前端发送 FormData
-        # -------------------------------------------------
         elif "multipart/form-data" in content_type:
             try:
                 form = await request.form()
-
                 print(f"收到 FormData：{form}")
-
                 source_file = form.get("source_file")
-
             except Exception as e:
                 print(f"FormData 读取失败：{e}")
 
-        # -------------------------------------------------
-        # 情况三：前端发送普通表单
-        # -------------------------------------------------
         elif "application/x-www-form-urlencoded" in content_type:
             try:
                 form = await request.form()
-
                 print(f"收到表单数据：{form}")
-
                 source_file = form.get("source_file")
-
             except Exception as e:
                 print(f"表单读取失败：{e}")
 
-        # -------------------------------------------------
-        # 情况四：没有 Content-Type，尝试读取原始数据
-        # -------------------------------------------------
         else:
             try:
                 body = await request.body()
-
                 print(f"收到原始请求：{body}")
-
                 if body:
                     try:
                         data = json.loads(body.decode("utf-8"))
-
                         print(f"原始数据解析结果：{data}")
-
                         if isinstance(data, dict):
                             source_file = data.get("source_file")
-
                     except Exception as e:
                         print(f"原始 JSON 解析失败：{e}")
-
             except Exception as e:
                 print(f"读取请求失败：{e}")
-
-        # =================================================
-        # 2. 打印最终获取到的 PDF
-        # =================================================
 
         print()
         print(f"最终获取到的 source_file：{source_file}")
 
-        # =================================================
-        # 3. 没有获取到 PDF
-        # =================================================
-
         if not source_file:
             print("❌ 没有获取到 source_file")
-
             return {
                 "success": False,
                 "message": "没有获取到要更新的 PDF 文件名"
             }
 
-        # =================================================
-        # 4. 转成字符串
-        # =================================================
-
         source_file = str(source_file).strip()
-
         print(f"当前选择的 PDF：{source_file}")
-
-        # =================================================
-        # 5. ⭐ 关键改动：异步启动 + 立即返回
-        # =================================================
 
         print()
         print("=" * 60)
@@ -1927,17 +1864,15 @@ async def update_knowledge(request: Request):
 
         import build_knowledge
 
-        # 先重置进度，避免前端读到旧状态
-        build_knowledge.update_progress = {
-            "total": 0,
-            "processed": 0,
-            "status": "running",
-            "message": f"准备更新 {source_file}",
-            "source_file": source_file,
-            "current_pdf": source_file
-        }
+        # 打印一下诊断信息，方便你确认加载的是哪份文件
+        print(f"[DEBUG] build_knowledge.__file__ = {build_knowledge.__file__}")
+        print(f"[DEBUG] 有 reset_progress 吗？{hasattr(build_knowledge, 'reset_progress')}")
+        print(f"[DEBUG] 有 set_progress 吗？{hasattr(build_knowledge, 'set_progress')}")
 
-        # ⭐ 后台线程跑，立即返回
+        # 先重置进度（写文件）
+        build_knowledge.reset_progress(source_file)
+
+        # 后台线程跑，立即返回
         threading.Thread(
             target=build_knowledge.main,
             kwargs={"source_file": source_file},
@@ -1946,81 +1881,64 @@ async def update_knowledge(request: Request):
 
         print(f"✅ 已启动后台线程：{source_file}")
 
-        # =================================================
-        # 6. 立即返回（不等任务跑完）
-        # =================================================
-
         return {
             "success": True,
             "message": f"《{source_file}》更新任务已启动",
             "source_file": source_file
         }
 
-    # =====================================================
-    # 7. 找不到 build_knowledge.py
-    # =====================================================
-
     except ModuleNotFoundError as e:
-
         print()
         print("=" * 60)
         print("找不到 build_knowledge.py")
         print("=" * 60)
         print(f"错误：{repr(e)}")
         print()
-
         return {
             "success": False,
             "message": "找不到 build_knowledge.py"
         }
 
-    # =====================================================
-    # 8. 其他异常
-    # =====================================================
-
     except Exception as e:
-
         import traceback
-
         print()
         print("=" * 60)
         print("法规知识库更新失败")
         print("=" * 60)
-
         print(f"错误类型：{type(e).__name__}")
         print(f"错误信息：{str(e)}")
         print()
         print("完整错误位置：")
-
         traceback.print_exc()
-
         print("=" * 60)
         print()
-
         return {
             "success": False,
             "message": f"更新失败：{str(e)}"
         }
 
 
-# ============================================================
-# ⭐ 新增：更新知识库进度
-#
-# GET /api/knowledge/update/progress
-# ============================================================
-
 @app.get("/api/knowledge/update/progress")
 async def update_knowledge_progress():
-    """返回 build_knowledge 的实时进度"""
+    """返回 build_knowledge 的实时进度（从磁盘读，跨进程可用）"""
     try:
         import build_knowledge
-        return build_knowledge.update_progress
+        return build_knowledge.get_progress()
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {
             "total": 0,
             "processed": 0,
             "status": "error",
-            "message": str(e)
+            "message": str(e),
+            "overall_percent": 0,
+            "stage": "",
+            "stage_percent": 0,
+            "part_total": 0,
+            "part_processed": 0,
+            "page_total": 0,
+            "page_processed": 0,
         }
 
 
@@ -4156,253 +4074,127 @@ def delete_pdf(filename: str):
 async def tag_articles_api(request: Request):
     """
     给当前选中的 PDF 法条打工种标签
-
-    前端传：
-    {
-        "source_file": "山西统筹煤炭安全新规通知.pdf"
-    }
-
-    只处理当前选中的 PDF，
-    不处理其他 PDF。
     """
-
     try:
-
         print()
         print("=" * 60)
         print("🏷️ 开始给法规打工种标签")
         print("=" * 60)
 
-        # =====================================================
-        # 1. 获取前端传来的 PDF
-        # =====================================================
-
         source_file = None
+        content_type = request.headers.get("content-type", "")
 
-        content_type = request.headers.get(
-            "content-type",
-            ""
-        )
-
-        print(
-            f"请求 Content-Type：{content_type}"
-        )
-
-        # -----------------------------------------------------
-        # JSON
-        # -----------------------------------------------------
+        print(f"请求 Content-Type：{content_type}")
 
         if "application/json" in content_type:
-
             try:
-
                 data = await request.json()
-
-                print(
-                    f"收到 JSON 数据：{data}"
-                )
-
+                print(f"收到 JSON 数据：{data}")
                 if isinstance(data, dict):
-                    source_file = data.get(
-                        "source_file"
-                    )
-
+                    source_file = data.get("source_file")
             except Exception as e:
-
-                print(
-                    f"JSON 读取失败：{e}"
-                )
-
-        # -----------------------------------------------------
-        # FormData
-        # -----------------------------------------------------
+                print(f"JSON 读取失败：{e}")
 
         elif "multipart/form-data" in content_type:
-
             try:
-
                 form = await request.form()
-
-                print(
-                    f"收到 FormData：{form}"
-                )
-
-                source_file = form.get(
-                    "source_file"
-                )
-
+                print(f"收到 FormData：{form}")
+                source_file = form.get("source_file")
             except Exception as e:
-
-                print(
-                    f"FormData 读取失败：{e}"
-                )
-
-        # -----------------------------------------------------
-        # 表单
-        # -----------------------------------------------------
+                print(f"FormData 读取失败：{e}")
 
         elif "application/x-www-form-urlencoded" in content_type:
-
             try:
-
                 form = await request.form()
-
-                print(
-                    f"收到表单数据：{form}"
-                )
-
-                source_file = form.get(
-                    "source_file"
-                )
-
+                print(f"收到表单数据：{form}")
+                source_file = form.get("source_file")
             except Exception as e:
-
-                print(
-                    f"表单读取失败：{e}"
-                )
-
-        # =====================================================
-        # 2. 检查 PDF
-        # =====================================================
+                print(f"表单读取失败：{e}")
 
         print()
-        print(
-            f"最终获取到的 source_file："
-            f"{source_file}"
-        )
+        print(f"最终获取到的 source_file：{source_file}")
 
         if not source_file:
-
-            print(
-                "❌ 没有获取到要打标签的 PDF"
-            )
-
+            print("❌ 没有获取到要打标签的 PDF")
             return {
                 "success": False,
                 "message": "请先选择要打标签的 PDF"
             }
 
-        source_file = str(
-            source_file
-        ).strip()
-
-        print()
-        print(
-            f"当前打标签 PDF："
-            f"{source_file}"
-        )
-
-        # =====================================================
-        # 3. ⭐ 关键改动：异步启动 + 立即返回
-        # =====================================================
+        source_file = str(source_file).strip()
+        print(f"当前打标签 PDF：{source_file}")
 
         print()
         print("=" * 60)
         print("开始调用 tag_articles（后台线程）")
-        print(
-            f"指定 PDF：{source_file}"
-        )
+        print(f"指定 PDF：{source_file}")
         print("=" * 60)
 
         import tag_articles
         import threading
 
-        # 先重置进度，避免前端读到旧状态
-        tag_articles.tag_progress = {
-            "total": 0,
-            "processed": 0,
-            "status": "running",
-            "message": f"准备给 {source_file} 打标签",
-            "source_file": source_file,
-            "current_article": ""
-        }
+        # ⭐ 先重置进度（写文件）
+        tag_articles.reset_tag_progress(source_file)
 
-        # ⭐ 后台线程跑，立即返回
+        # 后台启动
         threading.Thread(
             target=tag_articles.main,
             kwargs={"source_file": source_file},
             daemon=True
         ).start()
 
-        print(
-            f"✅ 已启动后台线程：{source_file}"
-        )
-
-        # =====================================================
-        # 4. ⭐ 立即返回（不等任务跑完）
-        # =====================================================
+        print(f"✅ 已启动后台线程：{source_file}")
 
         return {
             "success": True,
-            "message": (
-                f"《{source_file}》"
-                "打标签任务已启动"
-            ),
+            "message": f"《{source_file}》打标签任务已启动",
             "source_file": source_file
         }
 
     except ModuleNotFoundError as e:
-
-        print()
-        print(
-            "❌ 找不到 tag_articles.py：",
-            e
-        )
-
+        print(f"❌ 找不到 tag_articles.py：{e}")
         return {
             "success": False,
             "message": "找不到 tag_articles.py"
         }
 
     except Exception as e:
-
         import traceback
-
         print()
         print("=" * 60)
         print("❌ 打标签失败")
         print("=" * 60)
-
-        print(
-            f"错误类型：{type(e).__name__}"
-        )
-
-        print(
-            f"错误信息：{str(e)}"
-        )
-
-        print()
-        print("完整错误位置：")
-
+        print(f"错误类型：{type(e).__name__}")
+        print(f"错误信息：{str(e)}")
         traceback.print_exc()
-
         print("=" * 60)
-        print()
-
         return {
             "success": False,
             "message": f"打标签失败：{e}"
         }
 
 
-# ============================================================
-# ⭐ 新增：打标签进度接口
-#
-# GET /api/tag/progress
-# ============================================================
-
 @app.get("/api/tag/progress")
 async def tag_progress_api():
-    """返回 tag_articles 的实时进度"""
+    """返回 tag_articles 的实时进度（从磁盘读，跨进程可用）"""
     try:
         import tag_articles
-        return tag_articles.tag_progress
+        return tag_articles.get_tag_progress()
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return {
             "total": 0,
             "processed": 0,
             "status": "error",
-            "message": str(e)
+            "message": str(e),
+            "overall_percent": 0,
+            "stage": "",
+            "stage_percent": 0,
+            "part_total": 0,
+            "part_processed": 0,
+            "page_total": 0,
+            "page_processed": 0,
         }
 
 # ============================================================

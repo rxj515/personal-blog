@@ -40,31 +40,128 @@ RAW_TXT_DIR = BASE_DIR / "data" / "raw_txt"
 CLEAN_TXT_DIR = BASE_DIR / "data" / "clean_txt"
 MINERU_DIR = BASE_DIR / "data" / "mineru"
 
+# 进度文件（磁盘存储，跨进程可用）
+PROGRESS_FILE = BASE_DIR / "data" / "update_progress.json"
+
 
 # =========================================================
-# ⭐ 新增：全局进度（供 /api/knowledge/update/progress 读取）
+# 2. ⭐ 全局进度（文件存储，兼容多 worker / --reload）
 # =========================================================
 
-update_progress = {
+_DEFAULT_PROGRESS = {
     "total": 0,
     "processed": 0,
-    "status": "idle",       # idle | running | done | error
+    "status": "idle",        # idle | running | done | error
     "message": "",
     "source_file": "",
     "current_pdf": "",
+    "overall_percent": 0,
+    "stage": "",
+    "stage_percent": 0,
+    "part_total": 0,
+    "part_processed": 0,
+    "page_total": 0,
+    "page_processed": 0,
 }
+
+update_progress = dict(_DEFAULT_PROGRESS)
+
+
+def _save_progress():
+    """把内存里的进度写到磁盘"""
+    try:
+        PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PROGRESS_FILE.write_text(
+            json.dumps(update_progress, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except Exception as e:
+        print(f"⚠️ 写进度文件失败：{e}")
+
+
+def _load_progress():
+    """从磁盘读进度到内存"""
+    global update_progress
+    try:
+        if PROGRESS_FILE.exists():
+            data = json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                for k, v in _DEFAULT_PROGRESS.items():
+                    data.setdefault(k, v)
+                update_progress.clear()
+                update_progress.update(data)
+                return
+    except Exception as e:
+        print(f"⚠️ 读进度文件失败：{e}")
+
+    update_progress.clear()
+    update_progress.update(_DEFAULT_PROGRESS)
 
 
 def get_progress():
-    """返回当前进度（供接口调用）"""
-    return update_progress
+    """供接口调用：每次从文件读最新"""
+    _load_progress()
+    return dict(update_progress)
+
+
+def reset_progress(source_file=""):
+    """重置进度并写文件"""
+    update_progress.clear()
+    update_progress.update(dict(_DEFAULT_PROGRESS))
+    update_progress["status"] = "running"
+    update_progress["message"] = (
+        f"准备更新 {source_file}" if source_file else "准备更新"
+    )
+    update_progress["source_file"] = source_file or ""
+    update_progress["stage"] = "准备"
+    _save_progress()
+
+
+def set_progress(stage, stage_percent, message="", **extra):
+    """
+    统一设置进度（自动写文件）。
+
+    阶段权重：
+        准备          → 0%   ~ 5%
+        MinerU 解析   → 5%   ~ 95%
+        后处理        → 95%  ~ 100%
+    """
+    stage_percent = max(0.0, min(100.0, float(stage_percent)))
+
+    if stage == "准备":
+        overall = stage_percent * 0.05
+    elif stage == "MinerU 解析":
+        overall = 5 + stage_percent * 0.90
+    elif stage == "后处理":
+        overall = 95 + stage_percent * 0.05
+    else:
+        overall = stage_percent
+
+    update_progress["stage"] = stage
+    update_progress["stage_percent"] = round(stage_percent, 1)
+    update_progress["overall_percent"] = round(min(100.0, overall), 1)
+    if message:
+        update_progress["message"] = message
+    for k, v in extra.items():
+        update_progress[k] = v
+
+    _save_progress()
+
+
+def set_progress_field(key, value):
+    """单字段更新（自动写文件）"""
+    update_progress[key] = value
+    _save_progress()
 
 
 # =========================================================
-# 2. MinerU 配置
+# 3. MinerU 配置
 # =========================================================
 
-MINERU_TOKEN = os.getenv("MINERU_TOKEN", "").strip()
+MINERU_TOKEN = os.getenv(
+    "MINERU_TOKEN",
+    ""
+).strip()
 MINERU_BASE_URL = "https://mineru.net"
 MINERU_UPLOAD_URL = f"{MINERU_BASE_URL}/api/v4/file-urls/batch"
 MINERU_RESULT_URL = f"{MINERU_BASE_URL}/api/v4/extract-results/batch"
@@ -83,7 +180,7 @@ MINERU_RETRY_COUNT = 3
 
 
 # =========================================================
-# 3. 目录创建
+# 4. 目录创建
 # =========================================================
 
 def create_directories():
@@ -95,7 +192,7 @@ def create_directories():
 
 
 # =========================================================
-# 4. 安全文件名
+# 5. 安全文件名
 # =========================================================
 
 def safe_filename(name):
@@ -104,22 +201,16 @@ def safe_filename(name):
 
 
 # =========================================================
-# 5. Token
+# 6. Token
 # =========================================================
 
 def check_mineru_token():
     if not MINERU_TOKEN:
-        raise RuntimeError(
-            # "\n没有配置 MINERU_TOKEN。\n\n"
-            # "Windows CMD：\n"
-            # "set MINERU_TOKEN=你的MinerUToken\n\n"
-            # "PowerShell：\n"
-            # '$env:MINERU_TOKEN="你的MinerUToken"\n'
-        )
+        raise RuntimeError("没有配置 MINERU_TOKEN")
 
 
 # =========================================================
-# 6. PDF 页数
+# 7. PDF 页数
 # =========================================================
 
 def get_pdf_page_count(pdf_path):
@@ -131,7 +222,7 @@ def get_pdf_page_count(pdf_path):
 
 
 # =========================================================
-# 7. 重新整理 PDF
+# 8. 重新整理 PDF
 # =========================================================
 
 def rebuild_pdf(pdf_path):
@@ -162,7 +253,7 @@ def rebuild_pdf(pdf_path):
 
 
 # =========================================================
-# 8. 拆分 PDF
+# 9. 拆分 PDF
 # =========================================================
 
 def split_pdf_for_mineru(pdf_path, max_pages=MINERU_MAX_PAGES):
@@ -202,7 +293,7 @@ def split_pdf_for_mineru(pdf_path, max_pages=MINERU_MAX_PAGES):
 
 
 # =========================================================
-# 9. 识别法规名称
+# 10. 识别法规名称
 # =========================================================
 
 def detect_law_name_from_markdown(markdown, pdf_path):
@@ -271,7 +362,7 @@ def detect_law_name_from_markdown(markdown, pdf_path):
 
 
 # =========================================================
-# 10. 结构行 / 附则 / 附录
+# 11. 结构行 / 附则 / 附录
 # =========================================================
 
 def is_structure_line(line):
@@ -292,7 +383,7 @@ def is_definitions_title(line):
 
 
 # =========================================================
-# 11. 条文编号
+# 12. 条文编号
 # =========================================================
 
 def normalize_article_number(text):
@@ -361,7 +452,7 @@ def parse_article(text):
 
 
 # =========================================================
-# 12. 上标 / LaTeX 清理
+# 13. 上标 / LaTeX 清理
 # =========================================================
 
 def to_superscript(value):
@@ -470,7 +561,7 @@ def remove_page_number(lines):
 
 
 # =========================================================
-# 13. MinerU：下载
+# 14. MinerU：下载
 # =========================================================
 
 def download_mineru_zip(zip_url, output_path):
@@ -504,7 +595,7 @@ def make_mineru_data_id(pdf_path, attempt=1):
 
 
 # =========================================================
-# 14. 上传 / 查询
+# 15. 上传 / 查询
 # =========================================================
 
 def mineru_create_upload_url(pdf_path, attempt=1):
@@ -567,9 +658,12 @@ def mineru_upload_file(pdf_path, upload_url):
     print(f"文件：{pdf_path.name}")
     print(f"大小：{pdf_path.stat().st_size / 1024 / 1024:.2f} MB")
 
+    file_size = pdf_path.stat().st_size
+    upload_timeout = max(MINERU_HTTP_TIMEOUT, int(file_size / 1024 / 1024 * 10))
+
     with open(pdf_path, "rb") as f:
         response = requests.put(
-            upload_url, data=f, timeout=MINERU_HTTP_TIMEOUT,
+            upload_url, data=f, timeout=upload_timeout,
         )
 
     print(f"上传HTTP状态：{response.status_code}")
@@ -628,12 +722,23 @@ def mineru_wait_result(batch_id):
 
         elapsed_text = f"{int(elapsed) // 60:02d}:{int(elapsed) % 60:02d}"
 
-        # ⭐ 新增：把 MinerU 内部页数进度同步到全局 message
+        # ⭐ 把 MinerU 内部页数进度同步给前端
         if extracted_pages is not None and total_pages is not None:
-            pct = int(extracted_pages / max(1, total_pages) * 100)
-            update_progress["message"] = (
-                f"[{update_progress.get('current_pdf', '')}] "
-                f"MinerU 解析 {extracted_pages}/{total_pages} 页 ({pct}%)"
+            _load_progress()
+            part_processed = update_progress.get("part_processed", 0)
+            part_total = update_progress.get("part_total", 1) or 1
+
+            current_part_ratio = min(1.0, extracted_pages / max(1, total_pages))
+            mineru_percent = ((part_processed + current_part_ratio) / part_total) * 100
+
+            set_progress(
+                "MinerU 解析",
+                mineru_percent,
+                f"MinerU 解析中：{extracted_pages}/{total_pages} 页",
+                part_total=part_total,
+                part_processed=part_processed,
+                page_total=total_pages,
+                page_processed=extracted_pages,
             )
 
         if state != last_state:
@@ -701,12 +806,27 @@ def parse_one_pdf_by_mineru(pdf_path, output_name):
         print("----------------------------------------")
 
         try:
+            set_progress_field(
+                "message",
+                f"[{current_pdf.name}] 申请 MinerU 上传地址 "
+                f"(第 {attempt}/{MINERU_RETRY_COUNT} 次)"
+            )
             batch_id, upload_url = mineru_create_upload_url(current_pdf, attempt)
             print(f"Batch ID：{batch_id}")
 
+            set_progress_field(
+                "message", f"[{current_pdf.name}] 上传到 MinerU..."
+            )
             mineru_upload_file(current_pdf, upload_url)
+
+            set_progress_field(
+                "message", f"[{current_pdf.name}] 等待 MinerU 解析..."
+            )
             zip_url = mineru_wait_result(batch_id)
 
+            set_progress_field(
+                "message", f"[{current_pdf.name}] 下载 MinerU 结果..."
+            )
             return download_and_extract_mineru_result(
                 zip_url, Path(pdf_path), output_name,
             )
@@ -714,6 +834,10 @@ def parse_one_pdf_by_mineru(pdf_path, output_name):
             last_error = e
             print(f"\n⚠️ 第 {attempt} 次 MinerU 处理失败：")
             print(str(e))
+            set_progress_field(
+                "message",
+                f"[{current_pdf.name}] 第 {attempt} 次失败：{str(e)[:80]}"
+            )
 
             if attempt >= MINERU_RETRY_COUNT:
                 break
@@ -733,7 +857,7 @@ def parse_one_pdf_by_mineru(pdf_path, output_name):
 
 
 # =========================================================
-# 14.5 合并分片 + 去重
+# 16. 合并分片 + 去重
 # =========================================================
 
 def merge_markdown_parts(markdown_parts):
@@ -854,6 +978,9 @@ def parse_pdf_by_mineru(pdf_path):
 
     check_mineru_token()
 
+    # ---------- 准备阶段：0 ~ 5 ----------
+    set_progress("准备", 20, f"[{pdf_path.name}] 读取 PDF 页数...")
+
     page_count = get_pdf_page_count(pdf_path)
     print(f"PDF页数：{page_count}")
     print(f"MinerU模型：{MINERU_MODEL_VERSION}")
@@ -864,9 +991,21 @@ def parse_pdf_by_mineru(pdf_path):
     parts = []
     temp_dir = None
     try:
+        set_progress("准备", 60, f"[{pdf_path.name}] 拆分 PDF...")
         parts, temp_dir = split_pdf_for_mineru(pdf_path, MINERU_MAX_PAGES)
         print(f"\n本次 MinerU 实际处理 {len(parts)} 个文件")
 
+        part_total = len(parts)
+        set_progress(
+            "准备", 100,
+            f"[{pdf_path.name}] 准备完成，共 {part_total} 个分片",
+            part_total=part_total,
+            part_processed=0,
+            page_total=0,
+            page_processed=0,
+        )
+
+        # ---------- MinerU 解析阶段：5 ~ 95 ----------
         markdown_parts = []
         for index, part_path in enumerate(parts, start=1):
             print("\n========================================")
@@ -874,10 +1013,42 @@ def parse_pdf_by_mineru(pdf_path):
             print(part_path.name)
             print("========================================")
 
+            update_progress["part_processed"] = index - 1
+            update_progress["page_total"] = 0
+            update_progress["page_processed"] = 0
+            _save_progress()
+
+            base_percent = ((index - 1) / part_total) * 100
+            set_progress(
+                "MinerU 解析",
+                base_percent,
+                f"[{pdf_path.name}] 正在处理分片 {index}/{part_total}：{part_path.name}",
+                part_total=part_total,
+                part_processed=index - 1,
+                page_total=0,
+                page_processed=0,
+            )
+
             markdown = parse_one_pdf_by_mineru(part_path, f"part_{index}")
             markdown_parts.append(markdown)
 
+            update_progress["part_processed"] = index
+            _save_progress()
+
+            completed_percent = (index / part_total) * 100
+            set_progress(
+                "MinerU 解析",
+                completed_percent,
+                f"[{pdf_path.name}] 分片 {index}/{part_total} 完成",
+                part_total=part_total,
+                part_processed=index,
+            )
+
+        # ---------- MinerU 收尾：合并 / 去重 / 保存 md ----------
+        set_progress("MinerU 解析", 96, f"[{pdf_path.name}] 合并 Markdown...")
         markdown = merge_markdown_parts(markdown_parts)
+
+        set_progress("MinerU 解析", 98, f"[{pdf_path.name}] 去重 Markdown...")
         markdown = deduplicate_markdown(markdown)
 
         final_output_dir = MINERU_DIR / safe_filename(pdf_path.stem)
@@ -885,6 +1056,8 @@ def parse_pdf_by_mineru(pdf_path):
 
         final_md_path = final_output_dir / "full.md"
         final_md_path.write_text(markdown, encoding="utf-8")
+
+        set_progress("MinerU 解析", 100, f"[{pdf_path.name}] MinerU 解析完成")
 
         print("\n========================================")
         print("MinerU 全部解析完成")
@@ -901,7 +1074,7 @@ def parse_pdf_by_mineru(pdf_path):
 
 
 # =========================================================
-# 15. 文本行
+# 17. 文本行
 # =========================================================
 
 def extract_pdf(pdf_path):
@@ -943,7 +1116,7 @@ def save_clean_txt(pdf_path, cleaned):
 
 
 # =========================================================
-# 16. 唯一 ID（加 part）
+# 18. 唯一 ID
 # =========================================================
 
 def make_article_id(law_name, article, part=""):
@@ -952,7 +1125,7 @@ def make_article_id(law_name, article, part=""):
 
 
 # =========================================================
-# 17. 文档类型判断
+# 19. 文档类型判断
 # =========================================================
 
 CN_ITEM_PATTERN = re.compile(
@@ -961,12 +1134,6 @@ CN_ITEM_PATTERN = re.compile(
 
 
 def detect_document_type(markdown):
-    """
-    law_book     → 有第一部分 + 第二部分
-    notice_items → 有 5 个以上的 一、二、三、……
-    regulation   → 有 50 个以上的 第X条
-    unknown      → 都不是
-    """
     if not markdown:
         return "unknown"
 
@@ -1008,7 +1175,7 @@ def detect_document_type(markdown):
 
 
 # =========================================================
-# 18. 第一部分：清洗 + JSON
+# 20. 第一部分：清洗 + JSON
 # =========================================================
 
 def extract_section_title(line):
@@ -1170,10 +1337,9 @@ def build_part1_json(cleaned, law_name, source_file, part="第一部分"):
 
 
 # =========================================================
-# 19. 第二部分：对照检查解析
+# 21. 第二部分：对照检查解析
 # =========================================================
 
-# 只认 ## 第X条【标题】，不认别的
 GUIDE_TITLE_PATTERN = re.compile(
     r"^#{1,6}\s*"
     r"第\s*([一二三四五六七八九十百千万零〇0-9]+)\s*条"
@@ -1280,7 +1446,6 @@ def parse_guide_part(markdown, law_name, source_file):
         if not stripped:
             continue
 
-        # 0. 案例内部优先
         if current_case is not None:
             m = CASE_FIELD_PATTERN.match(stripped)
             if m:
@@ -1303,7 +1468,6 @@ def parse_guide_part(markdown, law_name, source_file):
                 current_case["处罚"] += "\n" + stripped
             continue
 
-        # 1. ## 第X条【标题】
         m = GUIDE_TITLE_PATTERN.match(stripped)
         if m:
             flush_guide()
@@ -1316,7 +1480,6 @@ def parse_guide_part(markdown, law_name, source_file):
         if current is None:
             continue
 
-        # 2. 解读 / 检查范围 / 检查方法
         m = GUIDE_BLOCK_PATTERN.match(stripped)
         if m:
             if current_case is not None:
@@ -1330,7 +1493,6 @@ def parse_guide_part(markdown, law_name, source_file):
                 current_block = "check_method"
             continue
 
-        # 3. 典型案例
         m = CASE_TITLE_PATTERN.match(stripped)
         if m:
             flush_case()
@@ -1339,7 +1501,6 @@ def parse_guide_part(markdown, law_name, source_file):
             current_case_field = None
             continue
 
-        # 4. 续行
         if current_block == "content":
             current["content"] = (
                 current["content"] + "\n" + stripped
@@ -1360,7 +1521,7 @@ def parse_guide_part(markdown, law_name, source_file):
 
 
 # =========================================================
-# 20. 通知：一、二、三、... 解析
+# 22. 通知：一、二、三、... 解析
 # =========================================================
 
 def parse_notice_items(markdown, law_name, source_file):
@@ -1414,10 +1575,9 @@ def parse_notice_items(markdown, law_name, source_file):
 
 
 # =========================================================
-# 21. 规程：第X编/章/节 + 第X条 解析
+# 23. 规程：第X编/章/节 + 第X条 解析
 # =========================================================
 
-# 匹配 “第一编 总则”、“第一章 设计及井巷布置”、“第一节 一般规定”
 SECTION_PATTERN = re.compile(
     r"^(第\s*[一二三四五六七八九十百千万零〇0-9]+\s*[编章节])"
     r"(?:\s+(.+))?$"
@@ -1425,9 +1585,6 @@ SECTION_PATTERN = re.compile(
 
 
 def parse_regulation(markdown, law_name, source_file):
-    """
-    解析“第X编/章/节 + 第X条”形式的长篇法规。
-    """
     lines = markdown.splitlines()
 
     articles = []
@@ -1468,7 +1625,6 @@ def parse_regulation(markdown, law_name, source_file):
         if not line:
             continue
 
-        # 编 / 章 / 节
         m = SECTION_PATTERN.match(line)
         if m:
             save_current()
@@ -1480,7 +1636,6 @@ def parse_regulation(markdown, law_name, source_file):
                 current_section = section_number
             continue
 
-        # 第X条
         article, content = parse_article(line)
         if article:
             save_current()
@@ -1490,7 +1645,6 @@ def parse_regulation(markdown, law_name, source_file):
                 current_content.append(content)
             continue
 
-        # 续行
         if current_article:
             current_content.append(line)
 
@@ -1499,7 +1653,7 @@ def parse_regulation(markdown, law_name, source_file):
 
 
 # =========================================================
-# 22. 保存：数组型 articles.json
+# 24. 保存：数组型 articles.json
 # =========================================================
 
 def save_articles_json(pdf_path, law_name, all_items):
@@ -1522,7 +1676,7 @@ def save_articles_json(pdf_path, law_name, all_items):
 
 
 # =========================================================
-# 23. 主程序
+# 25. 主程序
 # =========================================================
 
 def find_pdf_files():
@@ -1530,16 +1684,8 @@ def find_pdf_files():
 
 
 def main(source_file=None):
-    # ⭐ 新增：初始化全局进度
-    global update_progress
-    update_progress = {
-        "total": 0,
-        "processed": 0,
-        "status": "running",
-        "message": f"开始处理 {source_file or '全部'}",
-        "source_file": source_file or "",
-        "current_pdf": "",
-    }
+    # ---------- 重置进度 ----------
+    reset_progress(source_file or "")
 
     print("\n====================================")
     print("       通用法规知识库构建程序")
@@ -1551,80 +1697,36 @@ def main(source_file=None):
     print("\nPDF目录：")
     print(PDF_DIR.resolve())
 
-    # =====================================================
-    # 检查 MinerU Token
-    # =====================================================
+    # ---------- 检查 Token ----------
     try:
         check_mineru_token()
     except Exception as e:
         print(f"\n❌ {e}")
-        # ⭐ 新增：标记错误
-        update_progress["status"] = "error"
-        update_progress["message"] = str(e)
+        set_progress_field("status", "error")
+        set_progress_field("message", str(e))
         return False
 
-    # =====================================================
-    # 确定本次需要处理的 PDF
-    #
-    # source_file 有值：
-    #     只处理当前指定的 PDF
-    #
-    # source_file 没有值：
-    #     才处理 pdf 目录下的全部 PDF
-    # =====================================================
-
+    # ---------- 确定本次要处理的 PDF ----------
     if source_file:
-        # -------------------------------------------------
-        # 单 PDF 更新模式
-        # -------------------------------------------------
         pdf_path = Path(str(source_file).strip())
-
-        # -------------------------------------------------
-        # 如果传进来的是文件名：
-        #
-        # 山西统筹煤炭安全新规通知.pdf
-        #
-        # 那么必须去：
-        #
-        # D:\personal-blog\topic\pdf\
-        #
-        # 里面找
-        # -------------------------------------------------
         if not pdf_path.is_absolute():
             pdf_path = PDF_DIR / pdf_path
-
         pdf_path = pdf_path.resolve()
 
-        # -------------------------------------------------
-        # 检查 PDF 是否存在
-        # -------------------------------------------------
         if not pdf_path.exists():
             print("\n❌ 指定的 PDF 不存在：")
             print(f"实际查找路径：{pdf_path}")
-
-            print("\nPDF目录：")
-            print(PDF_DIR.resolve())
-
-            # ⭐ 新增：标记错误
-            update_progress["status"] = "error"
-            update_progress["message"] = f"PDF 不存在：{pdf_path.name}"
+            set_progress_field("status", "error")
+            set_progress_field("message", f"PDF 不存在：{pdf_path.name}")
             return False
 
-        # -------------------------------------------------
-        # 检查是否为 PDF
-        # -------------------------------------------------
         if pdf_path.suffix.lower() != ".pdf":
             print("\n❌ 指定文件不是 PDF：")
             print(pdf_path)
-
-            # ⭐ 新增：标记错误
-            update_progress["status"] = "error"
-            update_progress["message"] = f"不是 PDF：{pdf_path.name}"
+            set_progress_field("status", "error")
+            set_progress_field("message", f"不是 PDF：{pdf_path.name}")
             return False
 
-        # -------------------------------------------------
-        # 单 PDF 模式
-        # -------------------------------------------------
         pdf_files = [pdf_path]
 
         print("\n====================================")
@@ -1633,366 +1735,168 @@ def main(source_file=None):
         print(f"实际路径：{pdf_path}")
         print("不会处理其他 PDF")
         print("====================================")
-
     else:
-        # =================================================
-        # 没有指定 PDF
-        # 才扫描整个 pdf 目录
-        # =================================================
         pdf_files = find_pdf_files()
-
         if not pdf_files:
             print("\n❌ 没有找到 PDF 文件。")
-
             print("\n请把法规 PDF 放到：")
             print(PDF_DIR.resolve())
-
-            # ⭐ 新增：标记错误
-            update_progress["status"] = "error"
-            update_progress["message"] = "没有找到 PDF"
+            set_progress_field("status", "error")
+            set_progress_field("message", "没有找到 PDF")
             return False
 
         print(f"\n发现 {len(pdf_files)} 个 PDF：")
-
-        for index, pdf_path in enumerate(
-            pdf_files,
-            start=1
-        ):
+        for index, pdf_path in enumerate(pdf_files, start=1):
             try:
-                page_count = get_pdf_page_count(
-                    pdf_path
-                )
+                page_count = get_pdf_page_count(pdf_path)
             except Exception:
                 page_count = "未知"
+            print(f"{index}. {pdf_path.name} [{page_count}页]")
 
-            print(
-                f"{index}. {pdf_path.name} "
-                f"[{page_count}页]"
-            )
-
-    # ⭐ 新增：设置总进度 = PDF 数量
+    # ⭐ 设置总进度
+    _load_progress()
     update_progress["total"] = len(pdf_files)
     update_progress["processed"] = 0
-
-    # =====================================================
-    # 开始处理 PDF
-    # =====================================================
+    _save_progress()
 
     success_count = 0
     failed_count = 0
 
-    for index, pdf_path in enumerate(
-        pdf_files,
-        start=1
-    ):
-
+    for index, pdf_path in enumerate(pdf_files, start=1):
         print("\n====================================")
-        print(
-            f"正在处理 [{index}/{len(pdf_files)}]"
-        )
+        print(f"正在处理 [{index}/{len(pdf_files)}]")
         print(pdf_path.name)
         print("====================================")
 
-        # ⭐ 新增：更新当前正在处理的 PDF
+        _load_progress()
         update_progress["current_pdf"] = pdf_path.name
-        update_progress["message"] = f"[{pdf_path.name}] 开始解析"
+        update_progress["processed"] = index - 1
+        update_progress["part_total"] = 0
+        update_progress["part_processed"] = 0
+        update_progress["page_total"] = 0
+        update_progress["page_processed"] = 0
+        _save_progress()
 
         try:
+            # 1. MinerU 解析
+            law_name, all_lines, markdown = extract_pdf(pdf_path)
+            print(f"\n识别法规名称：{law_name}")
+            print(f"提取文本：{len(all_lines)} 行")
 
-            # -------------------------------------------------
-            # 1. MinerU 解析当前 PDF
-            # -------------------------------------------------
-
-            law_name, all_lines, markdown = extract_pdf(
-                pdf_path
-            )
-
-            print(
-                f"\n识别法规名称：{law_name}"
-            )
-
-            print(
-                f"提取文本：{len(all_lines)} 行"
-            )
-
-            # ⭐ 新增：更新阶段
-            update_progress["message"] = f"[{pdf_path.name}] 保存原始 TXT"
-
-            # -------------------------------------------------
             # 2. 保存原始 TXT
-            # -------------------------------------------------
-
+            set_progress("后处理", 30, f"[{pdf_path.name}] 保存原始 TXT...")
             try:
-
-                raw_path = save_raw_txt(
-                    pdf_path,
-                    all_lines
-                )
-
-                print(
-                    f"原始TXT：{raw_path.resolve()}"
-                )
-
+                raw_path = save_raw_txt(pdf_path, all_lines)
+                print(f"原始TXT：{raw_path.resolve()}")
             except Exception as e:
+                print(f"⚠️ 原始TXT保存失败：{e}")
 
-                print(
-                    f"⚠️ 原始TXT保存失败：{e}"
-                )
-
-            # -------------------------------------------------
             # 3. 判断文档类型
-            # -------------------------------------------------
-
-            # ⭐ 新增：更新阶段
-            update_progress["message"] = f"[{pdf_path.name}] 判断文档类型"
-
-            doc_type = detect_document_type(
-                markdown
-            )
-
-            print(
-                f"\n文档类型：{doc_type}"
-            )
+            set_progress("后处理", 50, f"[{pdf_path.name}] 判断文档类型...")
+            doc_type = detect_document_type(markdown)
+            print(f"\n文档类型：{doc_type}")
 
             all_items = []
 
-            # -------------------------------------------------
-            # 4. 法规书
-            # -------------------------------------------------
-
+            # 4. 按类型解析
             if doc_type == "law_book":
-
-                cleaned = clean_text(
-                    all_lines
-                )
-
-                print(
-                    f"清洗后：{len(cleaned)} 段"
-                )
+                cleaned = clean_text(all_lines)
+                print(f"清洗后：{len(cleaned)} 段")
 
                 try:
-
-                    clean_path = save_clean_txt(
-                        pdf_path,
-                        cleaned
-                    )
-
-                    print(
-                        f"清洗TXT："
-                        f"{clean_path.resolve()}"
-                    )
-
+                    clean_path = save_clean_txt(pdf_path, cleaned)
+                    print(f"清洗TXT：{clean_path.resolve()}")
                 except Exception as e:
-
-                    print(
-                        f"⚠️ 清洗TXT保存失败：{e}"
-                    )
+                    print(f"⚠️ 清洗TXT保存失败：{e}")
 
                 part1_articles = build_part1_json(
-                    cleaned,
-                    law_name,
-                    pdf_path.name,
-                    part="第一部分",
+                    cleaned, law_name, pdf_path.name, part="第一部分",
                 )
-
                 part2_guides = parse_guide_part(
-                    markdown,
-                    law_name,
-                    pdf_path.name,
+                    markdown, law_name, pdf_path.name,
                 )
-
-                all_items.extend(
-                    part1_articles
-                )
-
-                all_items.extend(
-                    part2_guides
-                )
-
-                print(
-                    f"第一部分条文："
-                    f"{len(part1_articles)} 条"
-                )
-
-                print(
-                    f"第二部分对照检查："
-                    f"{len(part2_guides)} 条"
-                )
-
-            # -------------------------------------------------
-            # 5. 通知
-            # -------------------------------------------------
+                all_items.extend(part1_articles)
+                all_items.extend(part2_guides)
+                print(f"第一部分条文：{len(part1_articles)} 条")
+                print(f"第二部分对照检查：{len(part2_guides)} 条")
 
             elif doc_type == "notice_items":
-
                 all_items = parse_notice_items(
-                    markdown,
-                    law_name,
-                    pdf_path.name,
+                    markdown, law_name, pdf_path.name,
                 )
-
-                print(
-                    f"通知条文："
-                    f"{len(all_items)} 条"
-                )
-
-            # -------------------------------------------------
-            # 6. 规程
-            # -------------------------------------------------
+                print(f"通知条文：{len(all_items)} 条")
 
             elif doc_type == "regulation":
-
                 all_items = parse_regulation(
-                    markdown,
-                    law_name,
-                    pdf_path.name,
+                    markdown, law_name, pdf_path.name,
                 )
-
-                print(
-                    f"规程条文："
-                    f"{len(all_items)} 条"
-                )
-
-            # -------------------------------------------------
-            # 7. 未识别
-            # -------------------------------------------------
+                print(f"规程条文：{len(all_items)} 条")
 
             else:
-
-                print(
-                    f"⚠️ 未识别文档类型，跳过："
-                    f"{pdf_path.name}"
-                )
-
+                print(f"⚠️ 未识别文档类型，跳过：{pdf_path.name}")
                 failed_count += 1
-
-                # ⭐ 新增：跳过也要推进进度
+                _load_progress()
                 update_progress["processed"] = index
+                _save_progress()
                 continue
-
-            # -------------------------------------------------
-            # 8. 没有解析出条文
-            # -------------------------------------------------
 
             if not all_items:
-
-                print(
-                    "\n❌ 没有识别到任何条文。"
-                )
-
+                print("\n❌ 没有识别到任何条文。")
                 failed_count += 1
-
-                # ⭐ 新增：跳过也要推进进度
+                _load_progress()
                 update_progress["processed"] = index
+                _save_progress()
                 continue
 
-            # -------------------------------------------------
-            # 9. 保存 articles.json
-            # -------------------------------------------------
+            # 5. 保存 articles.json
+            set_progress("后处理", 80, f"[{pdf_path.name}] 保存 JSON...")
+            save_articles_json(pdf_path, law_name, all_items)
 
-            # ⭐ 新增：更新阶段
-            update_progress["message"] = f"[{pdf_path.name}] 保存 JSON"
+            set_progress("后处理", 100, f"[{pdf_path.name}] 完成")
 
-            save_articles_json(
-                pdf_path,
-                law_name,
-                all_items
-            )
-
-            print(
-                f"\n✅ PDF处理成功："
-                f"{pdf_path.name}"
-            )
-
-            print(
-                f"   共生成："
-                f"{len(all_items)} 条知识"
-            )
+            print(f"\n✅ PDF处理成功：{pdf_path.name}")
+            print(f"   共生成：{len(all_items)} 条知识")
 
             success_count += 1
 
         except Exception as e:
-
             failed_count += 1
-
-            print(
-                f"\n❌ 处理失败：{e}"
-            )
-
+            print(f"\n❌ 处理失败：{e}")
             import traceback
-
             traceback.print_exc()
 
-        # ⭐ 新增：每个 PDF 处理完（无论成功失败）推进进度
+        _load_progress()
         update_progress["processed"] = index
+        _save_progress()
 
-    # =====================================================
-    # 处理结果
-    # =====================================================
-
+    # ---------- 完成 ----------
     print("\n====================================")
     print("处理完成")
     print("====================================")
-
-    print(
-        f"成功处理 PDF："
-        f"{success_count} 个"
-    )
-
-    print(
-        f"处理失败 PDF："
-        f"{failed_count} 个"
-    )
-
+    print(f"成功处理 PDF：{success_count} 个")
+    print(f"处理失败 PDF：{failed_count} 个")
     print("\n📁 知识库目录：")
-
-    print(
-        KNOWLEDGE_DIR.resolve()
-    )
-
+    print(KNOWLEDGE_DIR.resolve())
     print("====================================")
 
-    # ⭐ 新增：标记完成
+    _load_progress()
     update_progress["status"] = "done"
     update_progress["processed"] = update_progress["total"]
+    update_progress["overall_percent"] = 100
+    update_progress["stage_percent"] = 100
+    update_progress["stage"] = "后处理"
     update_progress["message"] = f"✅ 完成，成功 {success_count} 个"
+    _save_progress()
 
-    # =====================================================
-    # 返回结果
-    #
-    # 单 PDF 更新：
-    #     成功 -> True
-    #     失败 -> False
-    #
-    # 全量处理：
-    #     只要有一个成功就算本次有成功
-    # =====================================================
-
-    if success_count > 0:
-        return True
-
-    return False
+    return success_count > 0
 
 
 # =========================================================
-# 直接运行 build_knowledge.py 时
+# 直接运行 build_knowledge.py
 # =========================================================
 
 if __name__ == "__main__":
     import sys
-
-    # -----------------------------------------------------
-    # 命令行启动方式：
-    #
-    # python build_knowledge.py
-    #
-    # = 处理全部 PDF
-    #
-    #
-    # python build_knowledge.py xxx.pdf
-    #
-    # = 只处理指定 PDF
-    # -----------------------------------------------------
 
     source_file = None
 
