@@ -59,7 +59,6 @@
 
 /* =====================================================
    配置卡片
-   ★★★ 原来是 4 列，现在改为 5 列 ★★★
 ===================================================== */
 
 .config-card {
@@ -371,6 +370,27 @@
 
 
 /* =====================================================
+   ✅ 新增：工作日每日次数提示
+===================================================== */
+
+.daily-limit-tip {
+    grid-column: 1 / -1;
+
+    margin-top: 6px;
+
+    font-size: 13px;
+
+    color: #64748b;
+
+    text-align: center;
+
+    line-height: 1.5;
+
+    min-height: 20px;
+}
+
+
+/* =====================================================
    生成结果卡片
 ===================================================== */
 
@@ -506,7 +526,6 @@
 .question-table {
     width: 100%;
 
-    /* ✅ 从1250px增加到1400px，为生成时间列腾出空间 */
     min-width: 1400px;
 
     table-layout: fixed;
@@ -524,7 +543,7 @@
 }
 
 .col-question {
-    width: 22%;  /* ✅ 从24%调整为22%，给时间列腾空间 */
+    width: 22%;
 }
 
 .col-option {
@@ -539,7 +558,6 @@
     width: auto;
 }
 
-/* ✅ 新增：生成时间列 */
 .col-created {
     width: 150px;
     min-width: 150px;
@@ -691,7 +709,6 @@
         grid-template-columns: 1fr 1fr;
     }
 
-    /* ✅ 小屏幕下表格列宽调整 */
     .question-table {
         min-width: 1250px;
     }
@@ -704,7 +721,6 @@
         width: 5%;
     }
 
-    /* ✅ 新增：小屏时间列宽度 */
     .col-created {
         width: 130px;
         min-width: 130px;
@@ -735,7 +751,11 @@
         grid-column: 1;
     }
 
-    /* 当前使用 PDF 小屏适配 */
+    /* ✅ 新增：小屏下次数提示也占整行 */
+    .daily-limit-tip {
+        grid-column: 1;
+    }
+
     .config-card .pdf-current {
         grid-column: 1;
 
@@ -765,7 +785,6 @@
         border-radius: 18px;
     }
 
-    /* ✅ 小屏幕下表格列宽进一步调整 */
     .question-table {
         min-width: 1050px;
     }
@@ -778,7 +797,6 @@
         width: 4%;
     }
 
-    /* ✅ 新增：小屏时间列宽度 */
     .col-created {
         width: 120px;
         min-width: 120px;

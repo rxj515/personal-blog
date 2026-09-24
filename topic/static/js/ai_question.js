@@ -31,6 +31,116 @@ const AIQuestion = {
 
 
     // =====================================================
+    // ✅ 新增：工作日每日次数限制
+    // =====================================================
+    DAILY_LIMIT: 5,                        // 每天最多几次（改这里）
+    LIMIT_KEY: 'ai_question_daily_count',   // localStorage 键
+
+
+    // =====================================================
+    // ✅ 新增：判断今天是否周末
+    // =====================================================
+    isWeekend() {
+        const day = new Date().getDay();    // 0=周日, 6=周六
+        return day === 0 || day === 6;
+    },
+
+
+    // =====================================================
+    // ✅ 新增：读今日次数
+    // =====================================================
+    getTodayCount() {
+        const today = new Date();
+        const todayStr = [
+            today.getFullYear(),
+            String(today.getMonth() + 1).padStart(2, '0'),
+            String(today.getDate()).padStart(2, '0'),
+        ].join('-');
+
+        try {
+            const raw = localStorage.getItem(this.LIMIT_KEY);
+            if (!raw) return { date: todayStr, count: 0 };
+
+            const data = JSON.parse(raw);
+            if (data.date !== todayStr) {
+                // 跨天自动重置
+                return { date: todayStr, count: 0 };
+            }
+            return {
+                date: data.date,
+                count: Number(data.count) || 0
+            };
+        } catch (e) {
+            return { date: todayStr, count: 0 };
+        }
+    },
+
+
+    // =====================================================
+    // ✅ 新增：检查能不能出题
+    // =====================================================
+    checkDailyLimit() {
+        // 周末不限
+        if (this.isWeekend()) {
+            return { ok: true, reason: '' };
+        }
+
+        const data = this.getTodayCount();
+        if (data.count >= this.DAILY_LIMIT) {
+            return {
+                ok: false,
+                reason:
+                    `工作日每天最多出题 ${this.DAILY_LIMIT} 次，` +
+                    `今日已用完（${data.count}/${this.DAILY_LIMIT}）。\n\n` +
+                    `周末不限次数，请周末再试。`
+            };
+        }
+
+        return { ok: true, reason: '' };
+    },
+
+
+    // =====================================================
+    // ✅ 新增：出题成功后 +1
+    // =====================================================
+    increaseDailyCount() {
+        if (this.isWeekend()) return;       // 周末不计数
+
+        const data = this.getTodayCount();
+        data.count += 1;
+        localStorage.setItem(this.LIMIT_KEY, JSON.stringify(data));
+        this.updateLimitDisplay();
+    },
+
+
+    // =====================================================
+    // ✅ 新增：更新提示文字
+    // =====================================================
+    updateLimitDisplay() {
+        const el = document.getElementById('daily-limit-tip');
+        if (!el) return;
+
+        if (this.isWeekend()) {
+            el.textContent = '🎉 周末不限次数';
+            el.style.color = '#16a34a';
+            return;
+        }
+
+        const data = this.getTodayCount();
+        const remaining = this.DAILY_LIMIT - data.count;
+
+        if (remaining > 0) {
+            el.textContent =
+                `今日剩余 ${remaining} 次（工作日每天 ${this.DAILY_LIMIT} 次，周末不限）`;
+            el.style.color = '#64748b';
+        } else {
+            el.textContent = '今日次数已用完（周末不限）';
+            el.style.color = '#dc2626';
+        }
+    },
+
+
+    // =====================================================
     // 初始化
     // =====================================================
     async init() {
@@ -59,6 +169,9 @@ const AIQuestion = {
 
         // ✅ 绑定删除事件（独立）
         this.bindDeleteEvents();
+
+        // ✅ 新增：初始化每日次数提示
+        this.updateLimitDisplay();
 
         // ✅ 监听 AI 配置变化事件
         document.removeEventListener(
@@ -149,8 +262,6 @@ const AIQuestion = {
 
     // =====================================================
     // ✅ 加载当前 PDF 下各分类的法条数量
-    //
-    // 用于在下拉框里标记“暂无对应法条”的分类
     // =====================================================
     async loadDeptTagCount() {
 
@@ -166,23 +277,21 @@ const AIQuestion = {
 
             if (!result.success || !result.data) return;
 
-            const countMap = result.data; // { "安全": 12, "安监科": 0, ... }
+            const countMap = result.data;
 
             const select = document.getElementById("ai-dept-select");
             if (!select) return;
 
             for (const option of select.options) {
 
-                if (!option.value) continue; // 跳过“全部工种”
+                if (!option.value) continue;
 
-                // ✅ 和后端一致：只取全路径的最后一段
                 const fullName = option.dataset.fullName || option.textContent.trim();
                 const nodeName = fullName.split('/').pop().trim();
 
                 const count = Number(countMap[nodeName]) || 0;
                 const hasArticles = count > 0;
 
-                // 去掉旧提示
                 const rawName = option.textContent.replace('（暂无对应法条）', '');
 
                 option.textContent = hasArticles
@@ -272,7 +381,6 @@ const AIQuestion = {
             pdfName || "未选择"
         );
 
-        // ✅ 切换 PDF 后重新加载分类法条统计
         this.loadDeptTagCount();
     },
 
@@ -692,9 +800,6 @@ const AIQuestion = {
         }
 
 
-        // =================================================
-        // ✅ 新增：题型变化提示
-        // =================================================
         const typeSelect =
             document.getElementById(
                 "question-type"
@@ -962,6 +1067,13 @@ const AIQuestion = {
     // =====================================================
     async generateStream() {
 
+        // ✅ 新增：工作日次数限制检查（放在最前面）
+        const limitCheck = this.checkDailyLimit();
+        if (!limitCheck.ok) {
+            alert(limitCheck.reason);
+            return;
+        }
+
         if (this.isGenerating) {
 
             console.log("正在生成中，请勿重复点击");
@@ -1055,9 +1167,6 @@ const AIQuestion = {
         };
 
 
-        // =================================================
-        // ✅ 二次校验：该分类在当前 PDF 下是否有法条
-        // =================================================
         const deptArticleCount = Number(selectedOption?.dataset.articleCount) || 0;
 
         if (selectedOption && selectedOption.value && deptArticleCount === 0) {
@@ -1452,6 +1561,9 @@ const AIQuestion = {
 
                 }
 
+                // ✅ 新增：出题成功，计数 +1
+                this.increaseDailyCount();
+
                 console.log(
                     "生成完成，共 " +
                     this.currentQuestions.length +
@@ -1520,7 +1632,6 @@ const AIQuestion = {
             list.length === 0
         ) {
 
-            // ✅ 改动：colspan 从 11 改为 12（多了生成时间列）
             tbody.innerHTML = `
 
                 <tr>
@@ -1554,7 +1665,6 @@ const AIQuestion = {
             tr.dataset.index = index;
             tr.dataset.id = item.id || '';
 
-            // ✅ 改动：analysis 和删除按钮之间插入"生成时间"列
             tr.innerHTML = `
 
                 <td>${index + 1}</td>
