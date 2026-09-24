@@ -159,7 +159,11 @@ ALIYUN_REGION = "cn-hangzhou"
 ALIYUN_OSS_ENDPOINT = "https://oss-cn-hangzhou.aliyuncs.com"
 ALIYUN_OSS_BUCKET = "pdf-ocr-temp"
 
-DOCMIND_HTTP_TIMEOUT = 180
+# ---------- 超时配置（关键修改点） ----------
+# 单位：毫秒
+DOCMIND_CONNECT_TIMEOUT = 30000      # 连接超时 30 秒
+DOCMIND_READ_TIMEOUT = 120000        # 读取超时 120 秒（原来是默认 10 秒）
+
 DOCMIND_POLL_INTERVAL = 5
 DOCMIND_MAX_WAIT = 60 * 30
 DOCMIND_BATCH_SIZE = 50
@@ -267,7 +271,7 @@ def create_docmind_client():
 
 
 # =========================================================
-# 10. 提交解析任务
+# 10. 提交解析任务（关键修改点：加超时 + 重试）
 # =========================================================
 
 def docmind_submit_job(client, pdf_url):
@@ -279,30 +283,55 @@ def docmind_submit_job(client, pdf_url):
         file_name=file_name,
     )
 
-    runtime = util_models.RuntimeOptions()
+    # 显式设置超时，避免默认 10 秒 read timeout 导致超时
+    runtime = util_models.RuntimeOptions(
+        connect_timeout=DOCMIND_CONNECT_TIMEOUT,
+        read_timeout=DOCMIND_READ_TIMEOUT,
+    )
 
-    response = client.submit_doc_parser_job_with_options(request, runtime)
+    last_exc = None
+    for attempt in range(1, DOCMIND_RETRY_COUNT + 1):
+        try:
+            print(f"📤 提交 DocMind 任务（第 {attempt}/{DOCMIND_RETRY_COUNT} 次）...")
+            response = client.submit_doc_parser_job_with_options(request, runtime)
 
-    data = getattr(response.body, "data", None)
-    if data is None:
-        raise RuntimeError(
-            f"DocMind 提交失败，返回：{response.body}"
-        )
+            data = getattr(response.body, "data", None)
+            if data is None:
+                raise RuntimeError(f"DocMind 提交失败，返回：{response.body}")
 
-    task_id = _pick(data, "Id", "id")
-    if not task_id:
-        raise RuntimeError("DocMind 没有返回 task_id")
+            task_id = _pick(data, "Id", "id")
+            if not task_id:
+                raise RuntimeError("DocMind 没有返回 task_id")
 
-    return task_id
+            print(f"✅ 提交成功，TaskId={task_id}")
+            return task_id
+
+        except Exception as e:
+            last_exc = e
+            print(f"⚠️ 第 {attempt} 次提交失败：{e}")
+            if attempt < DOCMIND_RETRY_COUNT:
+                wait = 3 * attempt
+                print(f"   {wait} 秒后重试...")
+                time.sleep(wait)
+
+    raise RuntimeError(
+        f"DocMind 提交任务连续失败 {DOCMIND_RETRY_COUNT} 次，最后一次错误：{last_exc}"
+    )
 
 
 # =========================================================
-# 11. 轮询状态 + 分页拉全部结果
+# 11. 轮询状态 + 分页拉全部结果（关键修改点：统一超时）
 # =========================================================
 
 def docmind_wait_and_fetch(client, task_id):
     print("⏳ 等待阿里云解析...")
     start = time.time()
+
+    # 统一使用配置里的超时
+    runtime = util_models.RuntimeOptions(
+        connect_timeout=DOCMIND_CONNECT_TIMEOUT,
+        read_timeout=DOCMIND_READ_TIMEOUT,
+    )
 
     while True:
         elapsed = time.time() - start
@@ -313,10 +342,6 @@ def docmind_wait_and_fetch(client, task_id):
 
         status_request = docmind_models.QueryDocParserStatusRequest(
             id=task_id,
-        )
-        runtime = util_models.RuntimeOptions(
-            read_timeout=60000,
-            connect_timeout=10000,
         )
 
         status_response = client.query_doc_parser_status_with_options(
@@ -381,7 +406,7 @@ def docmind_wait_and_fetch(client, task_id):
 
 
 # =========================================================
-# 12. layouts → markdown  ✅ 这里修好了
+# 12. layouts → markdown
 # =========================================================
 
 def layouts_to_markdown(layouts):

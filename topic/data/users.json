@@ -1,1 +1,19 @@
-[]
+[
+  {
+    "user_id": "python-54a1cb8b461afa65",
+    "username": "admin",
+    "password_hash": "pbkdf2_sha256$600000$361ae32f464bc29486cb1549759c2d16$d0XSaM7WUapHvxWxXB_jEZRjs3FQDaagAMRHORqpl6s",
+    "role": "管理员",
+    "enabled": true,
+    "user_code": "admin",
+    "phone": null,
+    "duties_name": null,
+    "post_name": null,
+    "subjection_id": null,
+    "subjection_name": null,
+    "register_dept_id": null,
+    "register_dept_name": null,
+    "mine_id": null,
+    "mine_name": null
+  }
+]

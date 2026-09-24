@@ -1,6 +1,6 @@
 {
-    "provider": "deepseek",
-    "model": "deepseek-chat",
-    "base_url": "https://api.deepseek.com/v1",
+    "provider": "ollama",
+    "model": "qwen3:8b",
+    "base_url": "http://localhost:11434/v1",
     "api_key": ""
 }
