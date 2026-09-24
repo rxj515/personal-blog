@@ -232,7 +232,7 @@ def ai_call(prompt):
                 ],
                 "temperature": 0.1
             },
-            timeout=120
+            timeout=600
         )
         data = response.json()
         return data["choices"][0]["message"]["content"].strip()
