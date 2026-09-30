@@ -4000,9 +4000,15 @@ def delete_pdf(filename: str):
     删除 PDF 文件
     """
     try:
-        # ✅ 安全检查：防止路径遍历攻击
-        import re
-        if not re.match(r'^[\w\u4e00-\u9fa5\-_.]+$', filename):
+        # 允许用户上传时保留的常见文件名字符（如空格、括号），
+        # 但拒绝路径片段，防止删除 PDF 目录之外的文件。
+        if (
+            not filename
+            or "\x00" in filename
+            or "/" in filename
+            or "\\" in filename
+            or Path(filename).name != filename
+        ):
             return {
                 "success": False,
                 "message": "文件名包含非法字符"
@@ -4015,7 +4021,14 @@ def delete_pdf(filename: str):
                 "message": "只能删除 PDF 文件"
             }
         
-        file_path = PDF_DIR / filename
+        pdf_dir = PDF_DIR.resolve()
+        file_path = (pdf_dir / filename).resolve()
+
+        if file_path.parent != pdf_dir:
+            return {
+                "success": False,
+                "message": "文件名包含非法字符"
+            }
         
         # ✅ 检查文件是否存在
         if not file_path.exists():
