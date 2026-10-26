@@ -185,6 +185,13 @@
     color: #64748b;
 }
 
+.ai-question-page .form-tip {
+    margin-top: -2px;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.5;
+}
+
 
 /* =====================================================
    输入框 / 下拉框
@@ -366,27 +373,6 @@
     font-size: 13px;
 
     color: #64748b;
-}
-
-
-/* =====================================================
-   ✅ 新增：工作日每日次数提示
-===================================================== */
-
-.daily-limit-tip {
-    grid-column: 1 / -1;
-
-    margin-top: 6px;
-
-    font-size: 13px;
-
-    color: #64748b;
-
-    text-align: center;
-
-    line-height: 1.5;
-
-    min-height: 20px;
 }
 
 
@@ -748,11 +734,6 @@
     }
 
     .operation-message {
-        grid-column: 1;
-    }
-
-    /* ✅ 新增：小屏下次数提示也占整行 */
-    .daily-limit-tip {
         grid-column: 1;
     }
 

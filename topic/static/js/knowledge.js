@@ -29,17 +29,21 @@ window.Knowledge = (function () {
         let elapsedTimer = null;
         let elapsed = 0;
 
-        const overlay   = document.getElementById(cfg.overlayId);
-        const card      = document.getElementById(cfg.cardId);
-        const bar       = document.getElementById(cfg.barId);
-        const percentEl = document.getElementById(cfg.percentId);
-        const countEl   = document.getElementById(cfg.countId);
-        const msgEl     = document.getElementById(cfg.messageId);
-        const closeBtn  = document.getElementById(cfg.closeId);
 
-        const elapsedEl = cfg.elapsedId
-            ? document.getElementById(cfg.elapsedId)
-            : null;
+        function getElements() {
+            return {
+                overlay: document.getElementById(cfg.overlayId),
+                card: document.getElementById(cfg.cardId),
+                bar: document.getElementById(cfg.barId),
+                percentEl: document.getElementById(cfg.percentId),
+                countEl: document.getElementById(cfg.countId),
+                msgEl: document.getElementById(cfg.messageId),
+                closeBtn: document.getElementById(cfg.closeId),
+                elapsedEl: cfg.elapsedId
+                    ? document.getElementById(cfg.elapsedId)
+                    : null
+            };
+        }
 
 
         // ✅ 刷新拦截
@@ -57,17 +61,26 @@ window.Knowledge = (function () {
             window.removeEventListener('beforeunload', beforeUnloadHandler);
         }
 
+        function formatElapsed(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainingSeconds = seconds % 60;
+            return [hours, minutes, remainingSeconds]
+                .map(value => String(value).padStart(2, '0'))
+                .join(':');
+        }
 
-        // ✅ 耗时计时器
         function startElapsed() {
             stopElapsed();
             elapsed = 0;
-            if (elapsedEl) elapsedEl.textContent = '已耗时 0 秒';
+            const { elapsedEl } = getElements();
+            if (elapsedEl) elapsedEl.textContent = '已运行 00:00:00';
 
             elapsedTimer = setInterval(function () {
                 elapsed += 1;
+                const { elapsedEl } = getElements();
                 if (elapsedEl) {
-                    elapsedEl.textContent = '已耗时 ' + elapsed + ' 秒';
+                    elapsedEl.textContent = '已运行 ' + formatElapsed(elapsed);
                 }
             }, 1000);
         }
@@ -81,6 +94,7 @@ window.Knowledge = (function () {
 
 
         function show() {
+            const { overlay, card, bar, percentEl, countEl, msgEl, closeBtn } = getElements();
             if (!overlay) return;
             overlay.style.display = 'flex';
             if (card) card.className = 'task-progress-card';
@@ -89,12 +103,14 @@ window.Knowledge = (function () {
             if (countEl) countEl.textContent = '0 / 0';
             if (msgEl) msgEl.textContent = '准备中...';
             if (closeBtn) closeBtn.style.display = 'none';
+            if (closeBtn) closeBtn.onclick = hide;
 
             startElapsed();
             bindBeforeUnload();
         }
 
         function hide() {
+            const { overlay } = getElements();
             if (overlay) overlay.style.display = 'none';
 
             stopElapsed();
@@ -103,6 +119,7 @@ window.Knowledge = (function () {
 
         function update(data) {
             if (!data) return;
+            const { card, bar, percentEl, countEl, msgEl, closeBtn, elapsedEl } = getElements();
 
             // 优先用后端算好的 overall_percent
             let percent = 0;
@@ -155,12 +172,9 @@ window.Knowledge = (function () {
 
                 unbindBeforeUnload();
                 stopElapsed();
+                if (elapsedEl) elapsedEl.textContent = '总耗时 ' + formatElapsed(elapsed);
 
                 if (closeBtn) closeBtn.style.display = 'block';
-
-                setTimeout(function () {
-                    hide();
-                }, 3000);
             }
 
             // 出错
@@ -170,6 +184,7 @@ window.Knowledge = (function () {
 
                 unbindBeforeUnload();
                 stopElapsed();
+                if (elapsedEl) elapsedEl.textContent = '已运行 ' + formatElapsed(elapsed);
 
                 if (closeBtn) closeBtn.style.display = 'block';
             }
@@ -196,10 +211,6 @@ window.Knowledge = (function () {
 
             poll(); // 立即拉一次
             timer = setInterval(poll, 1000); // 每秒一次
-        }
-
-        if (closeBtn) {
-            closeBtn.addEventListener('click', hide);
         }
 
         return {

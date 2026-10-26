@@ -48,14 +48,12 @@
             </div>
 
             <div class="form-group">
-                <label>题目数量</label>
+                <label>本分类生成题目数量</label>
                 <input id="question-count" class="form-input" type="number" min="1" max="100" value="10">
+                <div class="form-tip">将在当前分类全部匹配的法条与考点中，优先覆盖不同法条后持续生成。</div>
             </div>
 
             <button id="generate-btn" class="btn-primary" type="button">✦ 开始AI出题</button>
-
-            <!-- ✅ 新增：工作日每日次数提示 -->
-            <div id="daily-limit-tip" class="daily-limit-tip"></div>
 
             <div id="generate-message" class="operation-message"></div>
         </div>

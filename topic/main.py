@@ -2363,6 +2363,10 @@ async def generate_questions_stream(
                 type_plan = [types[i % 3] for i in range(count)]
                 random.shuffle(type_plan)
 
+            answer_constraint_plan = (
+                question_generator.create_answer_constraint_plan(type_plan)
+            )
+
             # ----------------------------------------------------
             # ✅ 改动点：point_hash 直接用 generate_questions 里的，
             #    不再重复定义一份（避免两边逻辑不同步）
@@ -2383,17 +2387,33 @@ async def generate_questions_stream(
                 except Exception:
                     history_questions = []
 
+            # 题目去重应以“当前出题范围”为边界，而不是整个题库。
+            # 同一法条可能同时属于多个分类；在 A 分类出过的题，不应
+            # 阻止它在 B 分类继续出题。未选择分类时则使用“全部工种”范围。
+            question_scope = dept_id or dept_name or "__all__"
             used_questions = set()
+            used_article_keys = set()
 
             for item in history_questions:
                 if not isinstance(item, dict):
+                    continue
+                history_scope = (
+                    item.get("question_scope")
+                    or item.get("dept_id")
+                    or item.get("dept_name")
+                    or item.get("dept_type_name")
+                    or "__all__"
+                )
+                if history_scope != question_scope:
                     continue
                 art = item.get("article")
                 qtype = item.get("title_category_name")
                 if not art or not qtype:
                     continue
                 ph = item.get("point_hash") or point_hash(item.get("point", ""))
-                used_questions.add((art, qtype, ph))
+                article_key = item.get("article_key") or art
+                used_questions.add((article_key, qtype, ph))
+                used_article_keys.add(article_key)
 
             failed_questions = set()
             new_questions = []
@@ -2418,8 +2438,15 @@ async def generate_questions_stream(
 
                 current_type = type_plan[success_count]
 
+                # 优先从本分类中还未出过题的法条选取，先扩大覆盖面；
+                # 所有法条至少各有一道后，才继续使用同一法条的其他考点。
                 shuffled = article_list[:]
                 random.shuffle(shuffled)
+                unseen_articles = [
+                    item for item in shuffled
+                    if (item.get("id") or item.get("article", "")) not in used_article_keys
+                ]
+                shuffled = unseen_articles or shuffled
 
                 candidate = None
                 candidate_point = ""
@@ -2428,6 +2455,7 @@ async def generate_questions_stream(
                 for item in shuffled:
                     art = item.get("article", "")
                     content = item.get("content", "")
+                    article_key = item.get("id") or art
 
                     if not art or not content:
                         continue
@@ -2443,7 +2471,7 @@ async def generate_questions_stream(
 
                     for p in points:
                         h = point_hash(p["point"])
-                        key = (art, current_type, h)
+                        key = (article_key, current_type, h)
 
                         if key in used_questions or key in failed_questions:
                             continue
@@ -2464,7 +2492,7 @@ async def generate_questions_stream(
                 content = candidate.get("content", "")
 
                 current_key = (
-                    article,
+                    candidate.get("id") or article,
                     current_type,
                     point_hash(candidate_point)
                 )
@@ -2483,6 +2511,7 @@ async def generate_questions_stream(
                     point=candidate_point,
                     detail=candidate_detail,
                     batch_id=BATCH_ID,
+                    **answer_constraint_plan.get(success_count, {}),
                 )
 
                 if question is None:
@@ -2498,9 +2527,12 @@ async def generate_questions_stream(
 
                 question["point"] = candidate_point
                 question["point_hash"] = point_hash(candidate_point)
+                question["article_key"] = candidate.get("id") or article
+                question["question_scope"] = question_scope
 
                 new_questions.append(question)
                 used_questions.add(current_key)
+                used_article_keys.add(question["article_key"])
                 success_count += 1
 
                 try:

@@ -376,7 +376,9 @@ def build_prompt(
     content,
     question_type,
     point=None,
-    detail=None
+    detail=None,
+    required_answer=None,
+    required_correct_count=None,
 ):
 
     if point:
@@ -402,6 +404,40 @@ def build_prompt(
     else:
 
         focus_block = ""
+
+    judgment_answer_block = ""
+
+    if question_type == "判断题" and required_answer in ("A", "B"):
+
+        answer_name = "正确" if required_answer == "A" else "错误"
+
+        judgment_answer_block = f"""
+【本题答案配额（必须遵守）】
+
+本题答案必须是：{required_answer}（{answer_name}）。
+
+题干必须与该答案一致；若答案为B，题干必须包含一处能由法规原文明确判定的错误表述，不能只改写为模糊说法。
+"""
+
+    single_choice_answer_block = ""
+
+    if question_type == "单选题" and required_answer in ("A", "B", "C", "D"):
+
+        single_choice_answer_block = f"""
+【本题答案配额（必须遵守）】
+
+本题唯一正确答案必须是：{required_answer}。
+"""
+
+    multiple_choice_count_block = ""
+
+    if question_type == "多选题" and required_correct_count in (2, 3, 4, 5):
+
+        multiple_choice_count_block = f"""
+【本题答案配额（必须遵守）】
+
+本题必须恰好有 {required_correct_count} 个正确选项。
+"""
 
     prompt = f"""
 你是一名专业的法律法规考试出题专家。
@@ -454,6 +490,8 @@ plan_f必须为空。
 
 answer只能是：A 或者 B
 
+{judgment_answer_block}
+
 ==================================================
 【单选题要求】
 ==================================================
@@ -476,6 +514,8 @@ plan_f必须为空。
 必须只有一个正确答案。
 
 answer只能是：A B C D
+
+{single_choice_answer_block}
 
 ==================================================
 【多选题要求】
@@ -503,6 +543,8 @@ A,C,D
 
 不要使用：A、B、C
 
+{multiple_choice_count_block}
+
 ==================================================
 【所有题型共同要求】
 ==================================================
@@ -523,7 +565,11 @@ A,C,D
 14. 不要输出思考过程。
 15. 不要输出Thinking。
 16. 不要输出Markdown。
-17. 最终只能输出JSON。
+17. 题目必须脱离法规原文后仍能独立作答；不得只考条款号、表号、图号或附件编号。
+18. 原文引用表格、图表或附录时，必须将与考点有关的具体内容写入题干或选项，例如适用对象、条件、数值、比例、期限或禁止/允许情形。
+19. 禁止生成“应当符合表X要求”“按表X执行”“见表X”等只引用表号、却未说明表内具体要求的题目。
+20. 表号仅可作为解析中的出处补充，不能成为答题所必需的信息。
+21. 最终只能输出JSON。
 
 ==================================================
 【JSON格式】
@@ -565,7 +611,9 @@ def ask_ai(
     content,
     question_type,
     point=None,
-    detail=None
+    detail=None,
+    required_answer=None,
+    required_correct_count=None,
 ):
 
     prompt = build_prompt(
@@ -573,7 +621,9 @@ def ask_ai(
         content,
         question_type,
         point,
-        detail
+        detail,
+        required_answer,
+        required_correct_count,
     )
 
     return ai_client.generate(
@@ -610,6 +660,25 @@ def clean_ai_json(text):
 
 
 # ============================================================
+# 12.1 拦截不能独立作答的表格索引题
+# ============================================================
+
+def is_table_reference_only_question(subject):
+    """判断题干是否仅以“符合表X要求”等表号引用代替具体规则。"""
+
+    subject = str(subject or "").strip()
+
+    return bool(re.search(
+        r"(?:必须|应当|应|需|需要)?\s*"
+        r"(?:符合|按照|按|参照|执行|见)\s*"
+        r"(?:附)?表\s*[0-9一二三四五六七八九十]+"
+        r"(?:\s*(?:的)?(?:要求|规定|执行))?"
+        r"[。？?]?$",
+        subject
+    ))
+
+
+# ============================================================
 # 13. 验证题目（新增 point 字段保存 + 时间字段）
 # ============================================================
 
@@ -619,6 +688,8 @@ def validate_question(
     expected_type,
     point=None,
     batch_id=None,              # ✅ 新增：批次号
+    required_answer=None,
+    required_correct_count=None,
 ):
 
     try:
@@ -728,6 +799,14 @@ def validate_question(
 
         return None
 
+    if is_table_reference_only_question(question["subjects"]):
+
+        print(
+            "❌ 题干仅引用表号，未给出可独立作答的具体条件"
+        )
+
+        return None
+
     if not question["analysis"]:
 
         print(
@@ -761,6 +840,14 @@ def validate_question(
 
             print(
                 "❌ 判断题答案必须是A或B"
+            )
+
+            return None
+
+        if required_answer in ("A", "B") and answer != required_answer:
+
+            print(
+                "❌ 判断题答案未满足本批次的对错配额"
             )
 
             return None
@@ -818,6 +905,14 @@ def validate_question(
 
             print(
                 "❌ 单选题答案必须是A-D"
+            )
+
+            return None
+
+        if required_answer in ("A", "B", "C", "D") and answer != required_answer:
+
+            print(
+                "❌ 单选题答案未满足本批次的答案配额"
             )
 
             return None
@@ -950,6 +1045,17 @@ def validate_question(
 
                 return None
 
+        if (
+            required_correct_count in (2, 3, 4, 5)
+            and len(answer_list) != required_correct_count
+        ):
+
+            print(
+                "❌ 多选题正确选项数量未满足本批次的答案配额"
+            )
+
+            return None
+
         question["answer"] = ",".join(
             answer_list
         )
@@ -998,6 +1104,8 @@ def generate_one_question(
     point=None,
     detail=None,
     batch_id=None,              # ✅ 新增：批次号
+    required_answer=None,
+    required_correct_count=None,
 ):
 
     for retry in range(
@@ -1023,7 +1131,9 @@ def generate_one_question(
                 content,
                 question_type,
                 point,
-                detail
+                detail,
+                required_answer,
+                required_correct_count,
             )
 
             question = validate_question(
@@ -1032,6 +1142,8 @@ def generate_one_question(
                 question_type,
                 point,
                 batch_id=batch_id,      # ✅ 透传
+                required_answer=required_answer,
+                required_correct_count=required_correct_count,
             )
 
             if question and dept_info:
@@ -1121,6 +1233,57 @@ def create_question_type_plan(
     random.shuffle(plan)
 
     return plan
+
+
+def create_judgment_answer_plan(question_type_plan):
+    """为一批题中的判断题分配答案，确保“错误”至少占一半。"""
+
+    judgment_indexes = [
+        index
+        for index, current_type in enumerate(question_type_plan)
+        if current_type == "判断题"
+    ]
+
+    false_count = (len(judgment_indexes) + 1) // 2
+    answers = ["B"] * false_count + ["A"] * (
+        len(judgment_indexes) - false_count
+    )
+    random.shuffle(answers)
+
+    return dict(zip(judgment_indexes, answers))
+
+
+def create_answer_constraint_plan(question_type_plan):
+    """随机打散各题型答案，同时让整批题的答案分布保持多样。"""
+
+    constraints = {}
+    judgment_plan = create_judgment_answer_plan(question_type_plan)
+
+    for index, answer in judgment_plan.items():
+        constraints[index] = {"required_answer": answer}
+
+    for question_type, values, field_name in (
+        ("单选题", ["A", "B", "C", "D"], "required_answer"),
+        ("多选题", [2, 3, 4, 5], "required_correct_count"),
+    ):
+        indexes = [
+            index
+            for index, current_type in enumerate(question_type_plan)
+            if current_type == question_type
+        ]
+        assignments = []
+
+        while len(assignments) < len(indexes):
+            round_values = values[:]
+            random.shuffle(round_values)
+            assignments.extend(round_values)
+
+        assignments = assignments[:len(indexes)]
+
+        for index, value in zip(indexes, assignments):
+            constraints[index] = {field_name: value}
+
+    return constraints
 
 
 # ============================================================
@@ -1566,6 +1729,10 @@ def main(
         )
     )
 
+    answer_constraint_plan = create_answer_constraint_plan(
+        question_type_plan
+    )
+
     print()
     print(
         "===================================="
@@ -1575,7 +1742,17 @@ def main(
         question_type_plan,
         start=1
     ):
-        print(f"第{i}题：{current_type}")
+        constraint = answer_constraint_plan.get(i - 1, {})
+        required_answer = constraint.get("required_answer")
+        required_count = constraint.get("required_correct_count")
+        answer_note = ""
+        if current_type == "判断题":
+            answer_note = f"（答案：{'错误' if required_answer == 'B' else '正确'}）"
+        elif current_type == "单选题":
+            answer_note = f"（答案：{required_answer}）"
+        elif current_type == "多选题":
+            answer_note = f"（正确项：{required_count}个）"
+        print(f"第{i}题：{current_type}{answer_note}")
     print(
         "===================================="
     )
@@ -1800,6 +1977,7 @@ def main(
             point=candidate_point,
             detail=candidate_detail,
             batch_id=BATCH_ID,          # ✅ 传批次号
+            **answer_constraint_plan.get(success_count, {}),
         )
 
         if question is None:
